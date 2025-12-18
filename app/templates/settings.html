@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gacek 🦇 – Ustawienia</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>Gacek 🦇</h1>
+                <p class="header-subtitle">Ustawienia systemu</p>
+            </div>
+            <div class="header-controls">
+                <div class="header-controls-row">
+                    <div class="theme-toggle-wrapper">
+                        <label class="theme-toggle" for="theme-toggle">
+                            <input type="checkbox" id="theme-toggle" class="theme-toggle-input">
+                            <span class="theme-toggle-slider">
+                                <span class="theme-toggle-icon">◐</span>
+                            </span>
+                        </label>
+                        <div class="color-scheme-selector" id="color-scheme-selector"></div>
+                        <div class="theme-message" id="theme-message"></div>
+                    </div>
+                </div>
+                <div class="header-nav">
+                    <a href="{{ url_for('dashboard') }}">← Panel</a>
+                    <a href="{{ url_for('logout') }}">Wyloguj</a>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <section class="card">
+                <!-- Tabs navigation -->
+                <div class="tabs">
+                    {% for cat_key, cat_info in categories.items() %}
+                        <button class="tab-btn {% if loop.first %}active{% endif %}" data-tab="{{ cat_key }}">
+                            {{ cat_info.icon }} {{ cat_info.name }}
+                        </button>
+                    {% endfor %}
+                    <a href="{{ url_for('settings_prompts') }}" class="tab-btn" style="text-decoration: none;">
+                        📝 Prompty analizy
+                    </a>
+                </div>
+
+                <!-- Settings form -->
+                <form action="{{ url_for('settings_save') }}" method="post">
+                    {% for cat_key, cat_data in settings.items() %}
+                        <div id="tab-{{ cat_key }}" class="tab-content {% if loop.first %}active{% endif %}">
+                            <h2>{{ cat_data.icon }} {{ cat_data.name }}</h2>
+                            <p style="color: #666; margin-bottom: 20px;">{{ cat_data.description }}</p>
+                            
+                            <div class="setting-group">
+                                {% for setting_key, setting in cat_data.settings.items() %}
+                                    <div class="setting-row">
+                                        <div>
+                                            <div class="setting-label">{{ setting_key }}</div>
+                                            <div class="setting-desc">{{ setting.description }}</div>
+                                            {% if setting.alternatives %}
+                                                <div class="setting-alt">Alternatywy: {{ setting.alternatives }}</div>
+                                            {% endif %}
+                                        </div>
+                                        <div>
+                                            {% if setting.type == 'boolean' %}
+                                                <div class="checkbox-wrapper">
+                                                    <input type="checkbox" 
+                                                           name="setting_{{ setting_key }}" 
+                                                           id="setting_{{ setting_key }}"
+                                                           {% if setting.value|lower in ['true', '1', 'yes', 'on'] %}checked{% endif %}>
+                                                    <label for="setting_{{ setting_key }}">
+                                                        {% if setting.value|lower in ['true', '1', 'yes', 'on'] %}Włączone{% else %}Wyłączone{% endif %}
+                                                    </label>
+                                                </div>
+                                            {% elif setting.type == 'select' %}
+                                                <select name="setting_{{ setting_key }}" id="setting_{{ setting_key }}">
+                                                    {% for option in setting.options %}
+                                                        <option value="{{ option }}" {% if setting.value == option %}selected{% endif %}>
+                                                            {{ option }}
+                                                        </option>
+                                                    {% endfor %}
+                                                </select>
+                                            {% elif setting.type == 'number' %}
+                                                <input type="number" 
+                                                       name="setting_{{ setting_key }}" 
+                                                       id="setting_{{ setting_key }}"
+                                                       value="{{ setting.value }}"
+                                                       {% if setting.min is defined %}min="{{ setting.min }}"{% endif %}
+                                                       {% if setting.max is defined %}max="{{ setting.max }}"{% endif %}
+                                                       {% if setting.step is defined %}step="{{ setting.step }}"{% endif %}>
+                                            {% elif setting.type == 'password' %}
+                                                <input type="password" 
+                                                       name="setting_{{ setting_key }}" 
+                                                       id="setting_{{ setting_key }}"
+                                                       value="{{ setting.value }}"
+                                                       autocomplete="off">
+                                            {% else %}
+                                                <input type="text" 
+                                                       name="setting_{{ setting_key }}" 
+                                                       id="setting_{{ setting_key }}"
+                                                       value="{{ setting.value }}">
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+
+                    <div style="display: flex; gap: 15px; margin-top: 25px; flex-wrap: wrap;">
+                        <button type="submit" class="btn btn-primary">💾 Zapisz ustawienia</button>
+                        <button type="button" class="btn btn-warning" onclick="confirmRestart()">🔄 Restartuj system</button>
+                    </div>
+                </form>
+            </section>
+        </main>
+
+        <footer>
+            Zmiany ustawień wymagają restartu systemu aby zostały zastosowane.
+        </footer>
+    </div>
+
+    <!-- Restart form (hidden) -->
+    <form id="restart-form" action="{{ url_for('settings_restart') }}" method="post" style="display: none;"></form>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>

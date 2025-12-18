@@ -1,0 +1,29 @@
+# Wymagania dla SecurityProcessor
+# ===============================
+
+# Podstawowe biblioteki systemowe
+psutil>=5.9.0
+python-magic>=0.4.27
+requests>=2.31.0
+
+# Bezpieczeństwo i kryptografia
+cryptography>=41.0.0
+paramiko>=3.3.0
+
+# Przetwarzanie audio (opcjonalne - jeśli nie używasz systemowych narzędzi)
+# pydub>=0.25.1
+# librosa>=0.10.0
+
+# Dodatkowe narzędzia bezpieczeństwa
+seccomp>=2.5.0  # Jeśli dostępne w systemie
+
+# Logowanie i monitoring
+structlog>=23.1.0
+
+# Walidacja i sanitizacja
+validators>=0.20.0
+bleach>=6.0.0
+
+# Testy bezpieczeństwa
+pytest>=7.4.0
+pytest-cov>=4.1.0 

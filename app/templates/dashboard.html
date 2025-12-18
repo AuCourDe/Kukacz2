@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gacek 🦇 – Panel</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>Gacek 🦇</h1>
+                <p class="header-subtitle">Whisper Analyzer – Transkrypcja i analiza rozmów</p>
+            </div>
+            <div class="header-controls">
+                <div class="header-controls-row">
+                    <div class="theme-toggle-wrapper">
+                        <label class="theme-toggle" for="theme-toggle">
+                            <input type="checkbox" id="theme-toggle" class="theme-toggle-input">
+                            <span class="theme-toggle-slider">
+                                <span class="theme-toggle-icon">◐</span>
+                            </span>
+                        </label>
+                        <div class="color-scheme-selector" id="color-scheme-selector"></div>
+                        <div class="theme-message" id="theme-message"></div>
+                    </div>
+                </div>
+                <div class="header-nav">
+                    <a href="{{ url_for('settings') }}">⚙️ Ustawienia</a>
+                    <a href="{{ url_for('logout') }}">Wyloguj</a>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <!-- Flash messages -->
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="flash {{ category }}">{{ message }}</div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+
+            <!-- Upload section -->
+            <section class="card">
+                <h2>📁 Dodaj pliki audio</h2>
+                <p style="margin-bottom: 15px; color: #666;">
+                    Obsługiwane formaty: {{ allowed_extensions|join(', ') }}
+                </p>
+                
+                <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+                    <label for="file-input" class="file-label">
+                        <span class="file-label-text">Wybierz pliki audio lub przeciągnij je tutaj</span>
+                    </label>
+                    <input type="file" id="file-input" name="files" accept="{{ accept_attribute }}" multiple required>
+                    
+                    <button type="submit" class="btn btn-primary">
+                        📤 Zapisz i przetwórz
+                    </button>
+                </form>
+            </section>
+
+            <!-- Queue section -->
+            <section class="queue-section">
+                <h2>📋 Kolejka przetwarzania</h2>
+                
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Plik</th>
+                            <th>Rozmiar</th>
+                            <th>Status</th>
+                            <th>Wyniki</th>
+                        </tr>
+                    </thead>
+                    <tbody id="queue-body">
+                        {% if not queue_items %}
+                            <tr class="queue-empty">
+                                <td colspan="4">Brak zadań w kolejce.</td>
+                            </tr>
+                        {% else %}
+                            {% for item in queue_items %}
+                                <tr data-id="{{ item.id }}">
+                                    <td>
+                                        {{ item.filename }}
+                                        <br><small>Dodano: {{ item.created_at }}</small>
+                                    </td>
+                                    <td>{{ item.size_mb }} MB</td>
+                                    <td>
+                                        <span class="status {{ item.status }}">
+                                            {{ status_labels[item.status] }}
+                                        </span>
+                                        {% if item.status == "processing" %}
+                                            <br><small id="countdown-{{ item.id }}">Obliczanie...</small>
+                                        {% elif item.status == "completed" and item.processing_time %}
+                                            <br><small>Czas: {{ item.processing_time }}</small>
+                                        {% elif item.error %}
+                                            <br><small style="color: #dc3545;">{{ item.error }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td class="downloads">
+                                        {% if item.status == "completed" %}
+                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='transcription') }}">📄 Transkrypcja</a>
+                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='analysis') }}">📊 Analiza</a>
+                                        {% else %}
+                                            <small>–</small>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </section>
+        </main>
+
+        <footer>
+            Dostęp tylko dla administratora – wszystkie działania są logowane.
+        </footer>
+    </div>
+    
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Initialize countdown for processing items
+        {% for item in queue_items %}
+            {% if item.status == "processing" and item.started_at %}
+                updateCountdown('{{ item.id }}', {{ item.estimated_minutes }}, '{{ item.started_at }}');
+            {% endif %}
+        {% endfor %}
+    </script>
+</body>
+</html>

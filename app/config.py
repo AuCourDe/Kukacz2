@@ -243,7 +243,11 @@ OLLAMA_GENERATION_PARAMS = {
 if OLLAMA_NUM_PREDICT > 0:
     OLLAMA_GENERATION_PARAMS["num_predict"] = OLLAMA_NUM_PREDICT
 if OLLAMA_STOP_SEQUENCE:
-    OLLAMA_GENERATION_PARAMS["stop"] = OLLAMA_STOP_SEQUENCE
+    # WAŻNE: opcja "stop" musi być tablicą (array), nie stringiem!
+    # Rozdziel sekwencje po przecinku jeśli jest ich więcej
+    stop_sequences = [s.strip() for s in OLLAMA_STOP_SEQUENCE.split(",") if s.strip()]
+    if stop_sequences:
+        OLLAMA_GENERATION_PARAMS["stop"] = stop_sequences
 
 OLLAMA_CONNECT_TIMEOUT: float = _env_float("OLLAMA_CONNECT_TIMEOUT", 10.0)
 OLLAMA_REQUEST_TIMEOUT: float = _env_float("OLLAMA_REQUEST_TIMEOUT", 180.0)  # Zwiększono dla długich transkrypcji
@@ -316,6 +320,14 @@ RETRY_DELAY_BASE: int = int(os.getenv("RETRY_DELAY_BASE", "2"))  # sekundy
 WHISPER_NO_SPEECH_THRESHOLD: float = _env_float("WHISPER_NO_SPEECH_THRESHOLD", 0.2)
 WHISPER_LOGPROB_THRESHOLD: Optional[float] = _env_optional_float("WHISPER_LOGPROB_THRESHOLD", None)
 WHISPER_CONDITION_ON_PREVIOUS_TEXT: bool = _env_bool("WHISPER_CONDITION_ON_PREVIOUS_TEXT", False)
+WHISPER_SILENCE_HANDLING: str = os.getenv("WHISPER_SILENCE_HANDLING", "include")  # "include" lub "skip"
+
+# Tagi dla modeli myślących (thinking models)
+OLLAMA_THINKING_START_TAG: str = os.getenv("OLLAMA_THINKING_START_TAG", "")
+OLLAMA_THINKING_END_TAG: str = os.getenv("OLLAMA_THINKING_END_TAG", "")
+
+# Hasło dostępu do ustawień
+SETTINGS_PASSWORD: str = os.getenv("SETTINGS_PASSWORD", "admin123")
 
 # Ustawienia bezpieczeństwa
 ENABLE_FILE_ENCRYPTION: bool = os.getenv("ENABLE_FILE_ENCRYPTION", "true").lower() == "true"

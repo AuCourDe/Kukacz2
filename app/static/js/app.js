@@ -34,6 +34,9 @@ function initThemeToggle() {
         toggle.checked = true;
     }
     
+    // Ustaw ikonę w zależności od trybu
+    updateThemeIcon();
+    
     // Inicjalizuj selektor kolorów
     initColorSchemeSelector();
     
@@ -56,9 +59,22 @@ function initThemeToggle() {
             showThemeMessage('Tryb jasny włączony');
         }
         
+        // Zaktualizuj ikonę
+        updateThemeIcon();
+        
         // Odśwież przełącznik kolorów
         initColorSchemeSelector();
     });
+}
+
+function updateThemeIcon() {
+    const icon = document.querySelector('.theme-toggle-icon');
+    if (!icon) return;
+    
+    const isDark = document.body.classList.contains('dark-mode');
+    // W trybie jasnym pokazuj księżyc (przejście do ciemnego)
+    // W trybie ciemnym pokazuj słoneczko (przejście do jasnego)
+    icon.textContent = isDark ? '☀️' : '🌙';
 }
 
 // Inicjalizacja przełącznika wariantów kolorystycznych
@@ -268,7 +284,7 @@ function renderQueue(items) {
             statusHtml += `<br/><small id="countdown-${item.id}">Obliczanie...</small>`;
         } else if (item.status === 'completed' && item.processing_time) {
             stopCountdown(item.id);
-            statusHtml += `<br/><small>Czas: ${item.processing_time}</small>`;
+            statusHtml += `<br/><small>Przetworzone w czasie: ${item.processing_time}</small>`;
         } else if (item.status === 'failed') {
             stopCountdown(item.id);
             if (item.error) {
@@ -279,7 +295,7 @@ function renderQueue(items) {
         }
 
         return `<tr data-id="${item.id}">
-            <td>${escapeHtml(item.filename)}<br/><small>Dodano: ${item.created_at || '-'}</small></td>
+            <td>${escapeHtml(item.filename)}<br/><small>Dodano: ${item.created_at_formatted || '-'}</small></td>
             <td>${item.size_mb} MB</td>
             <td>${statusHtml}</td>
             <td class="downloads">${downloads}</td>

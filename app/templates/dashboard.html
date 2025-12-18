@@ -11,7 +11,7 @@
         <header>
             <div class="header-title">
                 <h1>Gacek 🦇</h1>
-                <p class="header-subtitle">Whisper Analyzer – Transkrypcja i analiza rozmów</p>
+                <p class="header-subtitle">Transkrypcja i analiza rozmów</p>
             </div>
             <div class="header-controls">
                 <div class="header-controls-row">
@@ -27,7 +27,7 @@
                     </div>
                 </div>
                 <div class="header-nav">
-                    <a href="{{ url_for('settings') }}">⚙️ Ustawienia</a>
+                    <a href="{{ url_for('settings') }}">Ustawienia</a>
                     <a href="{{ url_for('logout') }}">Wyloguj</a>
                 </div>
             </div>
@@ -45,7 +45,7 @@
 
             <!-- Upload section -->
             <section class="card">
-                <h2>📁 Dodaj pliki audio</h2>
+                <h2>Dodaj pliki audio</h2>
                 <p style="margin-bottom: 15px; color: #666;">
                     Obsługiwane formaty: {{ allowed_extensions|join(', ') }}
                 </p>
@@ -57,14 +57,14 @@
                     <input type="file" id="file-input" name="files" accept="{{ accept_attribute }}" multiple required>
                     
                     <button type="submit" class="btn btn-primary">
-                        📤 Zapisz i przetwórz
+                        Zapisz i przetwórz
                     </button>
                 </form>
             </section>
 
             <!-- Queue section -->
             <section class="queue-section">
-                <h2>📋 Kolejka przetwarzania</h2>
+                <h2>Kolejka przetwarzania</h2>
                 
                 <table>
                     <thead>
@@ -85,7 +85,7 @@
                                 <tr data-id="{{ item.id }}">
                                     <td>
                                         {{ item.filename }}
-                                        <br><small>Dodano: {{ item.created_at }}</small>
+                                        <br><small>Dodano: {{ item.created_at_formatted }}</small>
                                     </td>
                                     <td>{{ item.size_mb }} MB</td>
                                     <td>
@@ -95,15 +95,15 @@
                                         {% if item.status == "processing" %}
                                             <br><small id="countdown-{{ item.id }}">Obliczanie...</small>
                                         {% elif item.status == "completed" and item.processing_time %}
-                                            <br><small>Czas: {{ item.processing_time }}</small>
+                                            <br><small>Przetworzone w czasie: {{ item.processing_time }}</small>
                                         {% elif item.error %}
                                             <br><small style="color: #dc3545;">{{ item.error }}</small>
                                         {% endif %}
                                     </td>
                                     <td class="downloads">
                                         {% if item.status == "completed" %}
-                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='transcription') }}">📄 Transkrypcja</a>
-                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='analysis') }}">📊 Analiza</a>
+                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='transcription') }}">Transkrypcja</a>
+                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='analysis') }}">Analiza</a>
                                         {% else %}
                                             <small>–</small>
                                         {% endif %}
@@ -117,7 +117,7 @@
         </main>
 
         <footer>
-            Dostęp tylko dla administratora – wszystkie działania są logowane.
+            Gacek 🦇 v2.0
         </footer>
     </div>
     

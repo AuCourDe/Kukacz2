@@ -27,7 +27,7 @@
                     </div>
                 </div>
                 <div class="header-nav">
-                    <a href="{{ url_for('settings') }}">← Ustawienia</a>
+                    <a href="{{ url_for('settings') }}">Powrót do ustawień</a>
                     <a href="{{ url_for('logout') }}">Wyloguj</a>
                 </div>
             </div>
@@ -43,17 +43,22 @@
             {% endwith %}
 
             <section class="card">
-                <h2>📝 Moduły analizy</h2>
+                <h2>Moduły analizy</h2>
                 
                 <div class="info-box">
-                    <h3>💡 Jak działają prompty?</h3>
+                    <h3>Jak działają prompty?</h3>
                     <p>
                         Każdy prompt definiuje osobny moduł analizy. System wykonuje wszystkie prompty po kolei 
                         (od <code>prompt01.txt</code> do <code>prompt99.txt</code>) i łączy wyniki w jeden plik analizy.
-                        <br><br>
-                        Każdy prompt musi zawierać placeholder <code>{text}</code> gdzie zostanie wstawiona transkrypcja.
-                        Prompt powinien zwracać odpowiedź w formacie JSON z polem <code>integrity_alert</code>.
                     </p>
+                    <h3 style="margin-top: 15px;">Instrukcja tworzenia promptów:</h3>
+                    <ul style="margin: 10px 0; padding-left: 20px; line-height: 1.8;">
+                        <li><strong>Znacznik transkrypcji</strong> - każdy prompt MUSI zawierać <code>{text}</code> - w to miejsce zostanie wstawiona transkrypcja rozmowy</li>
+                        <li><strong>Format wyjściowy JSON</strong> - zalecany format odpowiedzi to JSON, np. <code>{"analiza": "...", "integrity_alert": false}</code></li>
+                        <li><strong>Pole integrity_alert</strong> - dodaj pole <code>"integrity_alert": false</code> do wykrywania prób manipulacji</li>
+                        <li><strong>Język polski</strong> - wszystkie odpowiedzi będą w języku polskim</li>
+                        <li><strong>Numeracja automatyczna</strong> - system automatycznie przypisuje numery od 01 do 99</li>
+                    </ul>
                 </div>
 
                 {% if prompts %}
@@ -72,8 +77,8 @@
                                         <input type="hidden" name="prompt_number" value="{{ prompt.number }}">
                                         <textarea name="content" placeholder="Wpisz treść promptu...">{{ prompt.content }}</textarea>
                                         <div style="display: flex; gap: 10px; margin-top: 15px;">
-                                            <button type="submit" class="btn btn-primary">💾 Zapisz prompt</button>
-                                            <button type="button" class="btn btn-danger btn-small" onclick="confirmDelete({{ prompt.number }})">🗑️ Usuń</button>
+                                            <button type="submit" class="btn btn-primary">Zapisz prompt</button>
+                                            <button type="button" class="btn btn-danger btn-small" onclick="confirmDelete({{ prompt.number }})">Usuń</button>
                                         </div>
                                     </form>
                                 </div>
@@ -82,14 +87,14 @@
                     </div>
                 {% else %}
                     <div style="text-align: center; padding: 40px; color: #888;">
-                        <p style="font-size: 40px; margin-bottom: 15px;">📭</p>
+                        <p style="font-size: 40px; margin-bottom: 15px;">...</p>
                         <p>Brak promptów. Utwórz pierwszy prompt poniżej.</p>
                     </div>
                 {% endif %}
 
                 <!-- New prompt section -->
                 <div style="margin-top: 30px; padding-top: 25px; border-top: 1px solid #ddd;">
-                    <h3 style="margin-bottom: 15px;">➕ Dodaj nowy moduł analizy</h3>
+                    <h3 style="margin-bottom: 15px;">Dodaj nowy moduł analizy</h3>
                     <form action="{{ url_for('settings_prompts_new') }}" method="post">
                         <textarea name="content" placeholder="Wpisz treść nowego promptu... 
 
@@ -105,7 +110,7 @@ Odpowiedz w formacie JSON:
   &quot;integrity_alert&quot;: false
 }" style="min-height: 250px;"></textarea>
                         <div style="margin-top: 15px;">
-                            <button type="submit" class="btn btn-primary">➕ Utwórz nowy prompt</button>
+                            <button type="submit" class="btn btn-primary">Utwórz nowy prompt</button>
                         </div>
                     </form>
                 </div>

@@ -37,6 +37,7 @@ from .config import (
     WEB_PASSWORD,
     WEB_PORT,
     WEB_SECRET_KEY,
+    SETTINGS_PASSWORD,
 )
 from .file_loader import AudioFileValidator
 from .processing_queue import ProcessingQueue, QueueItem
@@ -254,8 +255,31 @@ def create_web_app(
     # USTAWIENIA
     # ===========================================
     
+    def settings_auth_required(view):
+        """Dekorator wymagający dodatkowego hasła do ustawień."""
+        @wraps(view)
+        def wrapped(*args, **kwargs):
+            if not session.get("settings_authenticated"):
+                return redirect(url_for("settings_login", next=request.path))
+            return view(*args, **kwargs)
+        return wrapped
+    
+    @app.route("/settings/login", methods=["GET", "POST"])
+    @login_required
+    def settings_login():
+        """Strona logowania do ustawień."""
+        if request.method == "POST":
+            password = request.form.get("password", "")
+            if password == SETTINGS_PASSWORD:
+                session["settings_authenticated"] = True
+                flash("Dostęp do ustawień przyznany.", "success")
+                return redirect(request.args.get("next") or url_for("settings"))
+            flash("Niepoprawne hasło do ustawień.", "error")
+        return render_template("settings_login.html")
+    
     @app.route("/settings")
     @login_required
+    @settings_auth_required
     def settings():
         """Strona ustawień aplikacji."""
         settings_manager = get_settings_manager()
@@ -268,6 +292,7 @@ def create_web_app(
 
     @app.route("/settings/save", methods=["POST"])
     @login_required
+    @settings_auth_required
     def settings_save():
         """Zapisuje ustawienia."""
         settings_manager = get_settings_manager()
@@ -303,6 +328,7 @@ def create_web_app(
     
     @app.route("/settings/prompts")
     @login_required
+    @settings_auth_required
     def settings_prompts():
         """Zarządzanie promptami analizy."""
         prompt_manager = get_prompt_manager()
@@ -315,6 +341,7 @@ def create_web_app(
 
     @app.route("/settings/prompts/save", methods=["POST"])
     @login_required
+    @settings_auth_required
     def settings_prompts_save():
         """Zapisuje pojedynczy prompt."""
         prompt_manager = get_prompt_manager()
@@ -344,6 +371,7 @@ def create_web_app(
 
     @app.route("/settings/prompts/new", methods=["POST"])
     @login_required
+    @settings_auth_required
     def settings_prompts_new():
         """Tworzy nowy prompt."""
         prompt_manager = get_prompt_manager()
@@ -380,6 +408,7 @@ Odpowiedz w formacie JSON. Wszystkie teksty w odpowiedzi muszą być w języku p
 
     @app.route("/settings/prompts/delete/<int:prompt_number>", methods=["POST"])
     @login_required
+    @settings_auth_required
     def settings_prompts_delete(prompt_number: int):
         """Usuwa prompt."""
         prompt_manager = get_prompt_manager()
@@ -397,6 +426,7 @@ Odpowiedz w formacie JSON. Wszystkie teksty w odpowiedzi muszą być w języku p
     
     @app.route("/settings/restart", methods=["POST"])
     @login_required
+    @settings_auth_required
     def settings_restart():
         """Restartuje aplikację."""
         global _restart_requested

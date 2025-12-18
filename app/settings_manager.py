@@ -66,6 +66,20 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "alternatives": "Puste = wyłącza pyannote",
         "category": "models",
     },
+    "OLLAMA_THINKING_START_TAG": {
+        "default": "",
+        "type": "text",
+        "description": "Tag początkowy dla modeli myślących (np. <think>). Pozostaw puste jeśli model nie wymaga.",
+        "alternatives": "<think>, <reasoning>",
+        "category": "models",
+    },
+    "OLLAMA_THINKING_END_TAG": {
+        "default": "",
+        "type": "text",
+        "description": "Tag końcowy dla modeli myślących (np. </think>). Pozostaw puste jeśli model nie wymaga.",
+        "alternatives": "</think>, </reasoning>",
+        "category": "models",
+    },
     
     # ============================================
     # KATEGORIA: Parametry Ollama
@@ -171,8 +185,8 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "AUDIO_PREPROCESS_ENABLED": {
         "default": "true",
         "type": "boolean",
-        "description": "Włącz preprocessing audio przed transkrypcją",
-        "alternatives": "false (wyłącza preprocessing)",
+        "description": "Włącz wstępne przetwarzanie audio przed transkrypcją",
+        "alternatives": "false (wyłącza wstępne przetwarzanie)",
         "category": "audio",
     },
     "AUDIO_PREPROCESS_NOISE_REDUCE": {
@@ -223,22 +237,30 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "min": 0.0,
         "max": 1.0,
         "step": 0.05,
-        "description": "Próg wykrywania ciszy (niższy = mniej przerywania)",
-        "alternatives": "0.6 (domyślny Whisper), 0.1 (bardzo czuły)",
+        "description": "Próg wykrywania ciszy - określa jak agresywnie system pomija fragmenty bez mowy. Niższa wartość (np. 0.1) = system kontynuuje transkrypcję nawet przy długich przerwach. Wyższa wartość (np. 0.6) = szybsze przetwarzanie, ale może pomijać ciche fragmenty.",
+        "alternatives": "0.1 (pełna transkrypcja z ciszami), 0.6 (domyślny Whisper)",
         "category": "whisper",
     },
     "WHISPER_LOGPROB_THRESHOLD": {
         "default": "none",
         "type": "text",
-        "description": "Próg log-prawdopodobieństwa (none = wyłączony)",
-        "alternatives": "-1.0 (standardowy)",
+        "description": "Próg log-prawdopodobieństwa - filtruje segmenty o niskiej pewności rozpoznania. Wartość 'none' wyłącza filtrowanie (zalecane dla rozmów z szumem). Wartość -1.0 filtruje niewyraźne fragmenty.",
+        "alternatives": "-1.0 (filtruj niepewne), none (bez filtrowania)",
         "category": "whisper",
     },
     "WHISPER_CONDITION_ON_PREVIOUS_TEXT": {
         "default": "false",
         "type": "boolean",
-        "description": "Warunkuj na poprzednim tekście",
-        "alternatives": "true (może poprawić spójność)",
+        "description": "Jeśli włączone, Whisper używa poprzedniego tekstu jako kontekstu. Może poprawić spójność długich rozmów, ale też powodować 'halucynacje' (powtarzanie tekstu).",
+        "alternatives": "true (więcej kontekstu), false (bezpieczniej)",
+        "category": "whisper",
+    },
+    "WHISPER_SILENCE_HANDLING": {
+        "default": "include",
+        "type": "select",
+        "options": ["include", "skip"],
+        "description": "Obsługa ciszy w nagraniu. 'include' = przetwarzaj cały plik uwzględniając przerwy (zalecane dla rozmów z długimi pauzami). 'skip' = pomijaj długie fragmenty ciszy (szybsze przetwarzanie).",
+        "alternatives": "include (zachowaj cisze), skip (pomijaj cisze)",
         "category": "whisper",
     },
     
@@ -414,53 +436,65 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "alternatives": "Wygeneruj: python -c \"import secrets; print(secrets.token_urlsafe(32))\"",
         "category": "web",
     },
+    
+    # ============================================
+    # KATEGORIA: Hasło do ustawień (nie edytowalne z GUI)
+    # ============================================
+    "SETTINGS_PASSWORD": {
+        "default": "admin123",
+        "type": "password",
+        "description": "Hasło dostępu do ustawień (zmiana tylko w pliku .env)",
+        "alternatives": "Silne hasło",
+        "category": "security",
+        "readonly": True,
+    },
 }
 
 # Definicje kategorii (zakładek)
 SETTINGS_CATEGORIES = {
     "models": {
-        "name": "Modele AI",
-        "icon": "🤖",
+        "name": "Modele",
+        "icon": "",
         "description": "Ustawienia modeli Whisper, Ollama i rozpoznawania mówców",
     },
     "ollama": {
         "name": "Parametry Ollama",
-        "icon": "⚙️",
+        "icon": "",
         "description": "Szczegółowe parametry generowania odpowiedzi przez Ollama",
     },
     "audio": {
-        "name": "Preprocessing Audio",
-        "icon": "🔊",
+        "name": "Wstępne przetwarzanie audio",
+        "icon": "",
         "description": "Ustawienia poprawy jakości audio przed transkrypcją",
     },
     "whisper": {
         "name": "Parametry Whisper",
-        "icon": "🎙️",
+        "icon": "",
         "description": "Szczegółowe parametry transkrypcji Whisper",
     },
     "paths": {
         "name": "Foldery",
-        "icon": "📁",
+        "icon": "",
         "description": "Ścieżki do folderów wejściowych, wyjściowych i modeli",
     },
     "features": {
-        "name": "Funkcjonalności",
-        "icon": "✨",
-        "description": "Włączanie/wyłączanie funkcji aplikacji",
+        "name": "Inne",
+        "icon": "",
+        "description": "Dodatkowe funkcje aplikacji",
     },
     "logging": {
-        "name": "Logowanie",
-        "icon": "📝",
+        "name": "Logi",
+        "icon": "",
         "description": "Ustawienia logowania i ponawiania operacji",
     },
     "security": {
         "name": "Bezpieczeństwo",
-        "icon": "🔒",
+        "icon": "",
         "description": "Ustawienia szyfrowania i bezpieczeństwa",
     },
     "web": {
-        "name": "Interfejs WWW",
-        "icon": "🌐",
+        "name": "Interfejs",
+        "icon": "",
         "description": "Ustawienia serwera webowego i autoryzacji",
     },
 }
@@ -543,11 +577,13 @@ class SettingsManager:
             return False, f"Błąd zapisu: {str(e)}"
 
     def _read_env_file(self) -> Dict[str, str]:
-        """Odczytuje plik .env."""
+        """Odczytuje plik .env i usuwa komentarze z wartości."""
         values = {}
         
         if not self.env_path.exists():
-            return values
+            # Twórz plik .env z domyślnymi wartościami jeśli nie istnieje
+            self._create_default_env_file()
+            return self._get_default_values()
         
         try:
             with open(self.env_path, "r", encoding="utf-8") as f:
@@ -565,12 +601,35 @@ class SettingsManager:
                         if (value.startswith('"') and value.endswith('"')) or \
                            (value.startswith("'") and value.endswith("'")):
                             value = value[1:-1]
+                        else:
+                            # Usuń komentarz inline (# i wszystko po nim)
+                            # Ale tylko jeśli # nie jest w cudzysłowiu
+                            if "#" in value:
+                                # Znajdź pierwszy # który nie jest w środku wartości
+                                comment_idx = value.find("  #")  # Szukaj "  #" (2 spacje + #)
+                                if comment_idx == -1:
+                                    comment_idx = value.find(" #")  # Lub " #" (1 spacja + #)
+                                if comment_idx > 0:
+                                    value = value[:comment_idx].strip()
                         
                         values[key] = value
         except Exception as e:
             logger.error(f"Błąd odczytu pliku .env: {e}")
         
         return values
+    
+    def _get_default_values(self) -> Dict[str, str]:
+        """Zwraca domyślne wartości wszystkich ustawień."""
+        return {key: str(definition["default"]) for key, definition in SETTINGS_DEFINITIONS.items()}
+    
+    def _create_default_env_file(self) -> None:
+        """Tworzy plik .env z domyślnymi wartościami."""
+        try:
+            default_values = self._get_default_values()
+            self._write_env_file(default_values)
+            logger.info(f"Utworzono domyślny plik .env: {self.env_path}")
+        except Exception as e:
+            logger.error(f"Błąd tworzenia pliku .env: {e}")
 
     def _write_env_file(self, values: Dict[str, str]) -> None:
         """Zapisuje plik .env z komentarzami."""

@@ -140,11 +140,15 @@ header h1 {
 
 .theme-toggle-icon {
     position: absolute;
-    left: 7px;
-    top: 6px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     font-size: 14px;
     transition: 0.3s;
     z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .theme-toggle-input:checked + .theme-toggle-slider {
@@ -965,14 +969,15 @@ body.dark-mode .queue-empty {
 }
 
 .theme-toggle-icon {
-    font-size: 11px !important;
-    left: 5px !important;
-    top: 5px !important;
+    font-size: 12px !important;
+    left: 50% !important;
+    top: 50% !important;
+    transform: translate(-50%, -50%) !important;
     color: #1a1a1a;
 }
 
 .theme-toggle-input:checked + .theme-toggle-slider .theme-toggle-icon {
-    transform: translateX(21px) rotate(360deg);
+    transform: translate(-50%, -50%) !important;
 }
 
 .theme-toggle-input:checked + .theme-toggle-slider:before {

@@ -27,7 +27,7 @@
                     </div>
                 </div>
                 <div class="header-nav">
-                    <a href="{{ url_for('dashboard') }}">← Panel</a>
+                    <a href="{{ url_for('dashboard') }}">Wyjść z ustawień</a>
                     <a href="{{ url_for('logout') }}">Wyloguj</a>
                 </div>
             </div>
@@ -74,15 +74,10 @@
                                         </div>
                                         <div>
                                             {% if setting.type == 'boolean' %}
-                                                <div class="checkbox-wrapper">
-                                                    <input type="checkbox" 
-                                                           name="setting_{{ setting_key }}" 
-                                                           id="setting_{{ setting_key }}"
-                                                           {% if setting.value|lower in ['true', '1', 'yes', 'on'] %}checked{% endif %}>
-                                                    <label for="setting_{{ setting_key }}">
-                                                        {% if setting.value|lower in ['true', '1', 'yes', 'on'] %}Włączone{% else %}Wyłączone{% endif %}
-                                                    </label>
-                                                </div>
+                                                <select name="setting_{{ setting_key }}" id="setting_{{ setting_key }}">
+                                                    <option value="true" {% if setting.value|lower in ['true', '1', 'yes', 'on'] %}selected{% endif %}>Włączone</option>
+                                                    <option value="false" {% if setting.value|lower not in ['true', '1', 'yes', 'on'] %}selected{% endif %}>Wyłączone</option>
+                                                </select>
                                             {% elif setting.type == 'select' %}
                                                 <select name="setting_{{ setting_key }}" id="setting_{{ setting_key }}">
                                                     {% for option in setting.options %}
@@ -119,15 +114,15 @@
                     {% endfor %}
 
                     <div style="display: flex; gap: 15px; margin-top: 25px; flex-wrap: wrap;">
-                        <button type="submit" class="btn btn-primary">💾 Zapisz ustawienia</button>
-                        <button type="button" class="btn btn-warning" onclick="confirmRestart()">🔄 Restartuj system</button>
+                        <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
+                        <button type="button" class="btn btn-warning" onclick="confirmRestart()">Restartuj system</button>
                     </div>
                 </form>
             </section>
         </main>
 
         <footer>
-            Zmiany ustawień wymagają restartu systemu aby zostały zastosowane.
+            Zmiany aktywne po zapisaniu i zrestartowaniu systemu.
         </footer>
     </div>
 

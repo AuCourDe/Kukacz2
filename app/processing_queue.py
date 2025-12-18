@@ -71,17 +71,25 @@ class QueueItem:
         # Zwróć w formacie ISO 8601 - JavaScript poprawnie parsuje ten format
         return dt.isoformat()
     
+    def _format_datetime_human(self, dt: Optional[datetime]) -> Optional[str]:
+        """Formatuje datę do czytelnego formatu z dokładnością do sekundy."""
+        if dt is None:
+            return None
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        # Format: YYYY-MM-DD HH:MM:SS
+        return dt.strftime("%Y-%m-%d %H:%M:%S")
+    
     def _calculate_processing_time(self) -> Optional[str]:
-        """Oblicza faktyczny czas przetwarzania w minutach i sekundach."""
+        """Oblicza faktyczny czas przetwarzania w formacie mm:ss."""
         if not self.started_at or not self.finished_at:
             return None
         delta = self.finished_at - self.started_at
         total_seconds = int(delta.total_seconds())
         minutes = total_seconds // 60
         seconds = total_seconds % 60
-        if minutes > 0:
-            return f"{minutes}m {seconds}s"
-        return f"{seconds}s"
+        # Format: mm:ss
+        return f"{minutes:02d}:{seconds:02d}"
     
     def to_dict(self) -> Dict:
         size_mb = self.size_bytes / (1024 * 1024) if self.size_bytes else 0.0
@@ -91,6 +99,7 @@ class QueueItem:
             "size_mb": round(size_mb, 2),
             "status": self.status,
             "created_at": self._format_datetime(self.created_at),
+            "created_at_formatted": self._format_datetime_human(self.created_at),
             "started_at": self._format_datetime(self.started_at),
             "finished_at": self._format_datetime(self.finished_at),
             "estimated_minutes": self.estimated_minutes,

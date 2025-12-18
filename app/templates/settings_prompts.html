@@ -34,14 +34,6 @@
         </header>
 
         <main>
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="flash {{ category }}">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
             <section class="card">
                 <h2>Moduły analizy</h2>
                 
@@ -135,6 +127,15 @@ Odpowiedz w formacie JSON:
         {% if prompts %}
             togglePrompt({{ prompts[0].number }});
         {% endif %}
+        
+        // Show flash messages as toasts
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    showToast('{{ message|e }}', '{{ category }}');
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
     </script>
 </body>
 </html>

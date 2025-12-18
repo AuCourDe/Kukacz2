@@ -34,15 +34,6 @@
         </header>
 
         <main>
-            <!-- Flash messages -->
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="flash {{ category }}">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
             <!-- Upload section -->
             <section class="card">
                 <h2>Dodaj pliki audio</h2>
@@ -129,6 +120,15 @@
                 updateCountdown('{{ item.id }}', {{ item.estimated_minutes }}, '{{ item.started_at }}');
             {% endif %}
         {% endfor %}
+        
+        // Show flash messages as toasts
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    showToast('{{ message|e }}', '{{ category }}');
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
     </script>
 </body>
 </html>

@@ -46,16 +46,28 @@ function initThemeToggle() {
     }
     
     toggle.addEventListener('change', function() {
+        // Pobierz aktualny wariant kolorystyczny przed zmianą
+        const currentScheme = localStorage.getItem('gacek-color-scheme');
+        const currentVariant = currentScheme ? currentScheme.replace('light-', '').replace('dark-', '') : 'default';
+        
         // Usuń wszystkie warianty kolorystyczne
         clearColorSchemes();
         
         if (this.checked) {
             document.body.classList.add('dark-mode');
             localStorage.setItem('gacek-theme', 'dark');
+            // Zachowaj wariant kolorystyczny dla ciemnego motywu
+            const newScheme = 'dark-' + currentVariant;
+            localStorage.setItem('gacek-color-scheme', newScheme);
+            applyColorScheme(newScheme);
             showThemeMessage('Tryb ciemny włączony');
         } else {
             document.body.classList.remove('dark-mode');
             localStorage.setItem('gacek-theme', 'light');
+            // Zachowaj wariant kolorystyczny dla jasnego motywu
+            const newScheme = 'light-' + currentVariant;
+            localStorage.setItem('gacek-color-scheme', newScheme);
+            applyColorScheme(newScheme);
             showThemeMessage('Tryb jasny włączony');
         }
         
@@ -72,9 +84,10 @@ function updateThemeIcon() {
     if (!icon) return;
     
     const isDark = document.body.classList.contains('dark-mode');
+    // Czarno-białe ikony (nie emoji)
     // W trybie jasnym pokazuj księżyc (przejście do ciemnego)
     // W trybie ciemnym pokazuj słoneczko (przejście do jasnego)
-    icon.textContent = isDark ? '☀️' : '🌙';
+    icon.textContent = isDark ? '☉' : '☽';
 }
 
 // Inicjalizacja przełącznika wariantów kolorystycznych
@@ -270,8 +283,8 @@ function renderQueue(items) {
     
     queueBody.innerHTML = items.map(item => {
         const downloads = item.status === 'completed'
-            ? `<a href="/download/${item.id}/transcription">📄 Transkrypcja</a>
-               <a href="/download/${item.id}/analysis">📊 Analiza</a>`
+            ? `<a href="/download/${item.id}/transcription">Transkrypcja</a>
+               <a href="/download/${item.id}/analysis">Analiza</a>`
             : '<small>–</small>';
         
         let statusHtml = `<span class="status ${item.status}">${statusLabels[item.status] || item.status}</span>`;
@@ -320,6 +333,11 @@ function escapeHtml(value) {
 function initTabs() {
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.addEventListener('click', function(e) {
+            // Don't prevent default for link-type tabs (allow navigation)
+            if (this.classList.contains('tab-link') || this.tagName === 'A') {
+                return; // Let the link navigate normally
+            }
+            
             e.preventDefault();
             
             const tabId = this.getAttribute('data-tab') || this.getAttribute('onclick')?.match(/'([^']+)'/)?.[1];

@@ -219,7 +219,7 @@ def create_web_app(
 
         if saved_items:
             flash(
-                f"Przesłano {len(saved_items)} plików.",
+                f"Pliki przesłane do przetworzenia: {len(saved_items)}",
                 "success",
             )
         if rejected:

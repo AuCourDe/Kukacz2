@@ -249,7 +249,7 @@ class ResultSaver:
         if content_analysis:
             if content_analysis.get("injection_detected"):
                 warning = (
-                    "⚠️ Wykryto potencjalną próbę manipulacji transkrypcją. "
+                    "UWAGA: Wykryto potencjalną próbę manipulacji transkrypcją. "
                     f"Słowa-klucze: {', '.join(content_analysis.get('injection_matches', []))}\n\n"
                 )
             else:
@@ -273,8 +273,8 @@ class ResultSaver:
                 if isinstance(parsed, dict) and "brief_summary" in parsed:
                     parsed_copy = copy.deepcopy(parsed)
                     brief = parsed_copy.pop("brief_summary")
-                    result = f"📋 Krótkie podsumowanie rozmowy:\n{brief}\n\n"
-                    result += "📊 Szczegółowa analiza:\n"
+                    result = f"Krotkie podsumowanie rozmowy:\n{brief}\n\n"
+                    result += "Szczegolowa analiza:\n"
                     result += json.dumps(parsed_copy, ensure_ascii=False, indent=2)
                     return warning + result
                 else:
@@ -299,10 +299,10 @@ class ResultSaver:
         lines = []
         
         # Nagłówek ze statystykami
-        lines.append(f"📊 ANALIZA WIELOMODUŁOWA")
+        lines.append(f"ANALIZA WIELOMODUŁOWA")
         lines.append(f"Wykonano {successful}/{total} modułów analizy pomyślnie")
         if failed > 0:
-            lines.append(f"⚠️ Niepowodzenia: {failed}")
+            lines.append(f"Niepowodzenia: {failed}")
         lines.append("=" * 60)
         lines.append("")
         
@@ -312,13 +312,13 @@ class ResultSaver:
             prompt_filename = result.get("prompt_filename", f"prompt{prompt_num:02d}.txt")
             success = result.get("success", False)
             
-            lines.append(f"📋 MODUŁ {prompt_num:02d}: {prompt_filename}")
+            lines.append(f"MODUŁ {prompt_num:02d}: {prompt_filename}")
             lines.append("-" * 40)
             
             # Sprawdź injection
             if result.get("injection_detected"):
                 lines.append(
-                    f"⚠️ Wykryto potencjalną próbę manipulacji: "
+                    f"UWAGA: Wykryto potencjalną próbę manipulacji: "
                     f"{', '.join(result.get('injection_matches', []))}"
                 )
             
@@ -338,7 +338,7 @@ class ResultSaver:
                         
                         # Specjalna obsługa brief_summary
                         if "brief_summary" in display_result:
-                            lines.append(f"\n📝 Podsumowanie:")
+                            lines.append(f"\nPodsumowanie:")
                             lines.append(display_result.pop("brief_summary"))
                             lines.append("")
                         

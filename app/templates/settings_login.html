@@ -3,55 +3,57 @@
   <head>
     <meta charset="utf-8" />
     <title>Gacek 🦇 – Dostęp do ustawień</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
       body {
-        font-family: "Inter", Arial, sans-serif;
-        background: #0b1522;
-        color: #f8f8f8;
         display: flex;
         align-items: center;
         justify-content: center;
         min-height: 100vh;
         margin: 0;
+        padding: 20px;
       }
-      .card {
-        background: rgba(255, 255, 255, 0.06);
+      .login-card {
+        background: rgba(255, 255, 255, 0.95);
         padding: 2.5rem;
         border-radius: 16px;
         width: 100%;
         max-width: 420px;
         box-shadow: 0 20px 45px rgba(0, 0, 0, 0.35);
-        backdrop-filter: blur(8px);
       }
-      h1 {
+      .login-card h1 {
         margin-top: 0;
         font-size: 1.8rem;
         text-align: center;
         letter-spacing: 0.5px;
+        color: #333;
       }
-      p.subtitle {
+      .login-card p.subtitle {
         text-align: center;
-        color: #aaa;
+        color: #666;
         margin-bottom: 1.5rem;
         font-size: 0.9rem;
       }
-      label {
+      .login-card label {
         display: block;
         margin-bottom: 0.4rem;
         font-weight: 600;
+        color: #333;
       }
-      input {
+      .login-card input {
         width: 100%;
         padding: 0.75rem 1rem;
         border-radius: 8px;
-        border: none;
+        border: 1px solid #ddd;
         margin-bottom: 1.25rem;
         font-size: 1rem;
+        background: #fff;
+        color: #333;
       }
-      button {
+      .login-card button {
         width: 100%;
         padding: 0.9rem;
-        background: #18b47c;
+        background: #667eea;
         border: none;
         border-radius: 8px;
         font-size: 1.05rem;
@@ -59,8 +61,8 @@
         color: #fff;
         cursor: pointer;
       }
-      button:hover {
-        background: #14a16e;
+      .login-card button:hover {
+        background: #5a6fd6;
       }
       .flash {
         padding: 0.75rem 1rem;
@@ -69,31 +71,50 @@
         font-size: 0.9rem;
       }
       .flash.error {
-        background: rgba(255, 61, 113, 0.2);
-        color: #ff8ea8;
+        background: rgba(220, 53, 69, 0.15);
+        color: #dc3545;
       }
       .flash.success {
-        background: rgba(24, 180, 124, 0.2);
-        color: #9df4c9;
+        background: rgba(40, 167, 69, 0.15);
+        color: #28a745;
       }
       .flash.info {
-        background: rgba(64, 172, 255, 0.2);
-        color: #8dd2ff;
+        background: rgba(23, 162, 184, 0.15);
+        color: #17a2b8;
       }
       .back-link {
         display: block;
         text-align: center;
         margin-top: 1rem;
-        color: #8dd2ff;
+        color: #667eea;
         text-decoration: none;
       }
       .back-link:hover {
         text-decoration: underline;
       }
+      /* Dark mode */
+      body.dark-mode .login-card {
+        background: rgba(30, 30, 30, 0.95);
+      }
+      body.dark-mode .login-card h1,
+      body.dark-mode .login-card label {
+        color: #f8f8f8;
+      }
+      body.dark-mode .login-card p.subtitle {
+        color: #aaa;
+      }
+      body.dark-mode .login-card input {
+        background: #2d2d2d;
+        border-color: #444;
+        color: #f8f8f8;
+      }
+      body.dark-mode .back-link {
+        color: #8dd2ff;
+      }
     </style>
   </head>
   <body>
-    <div class="card">
+    <div class="login-card">
       <h1>Gacek 🦇</h1>
       <p class="subtitle">Dostęp do ustawień wymaga dodatkowego hasła</p>
       {% with messages = get_flashed_messages(with_categories=true) %}
@@ -111,5 +132,21 @@
       </form>
       <a href="{{ url_for('dashboard') }}" class="back-link">Powrót do panelu</a>
     </div>
+    <script>
+      // Apply saved theme on settings login page
+      (function() {
+        const savedTheme = localStorage.getItem('gacek-theme');
+        const savedScheme = localStorage.getItem('gacek-color-scheme');
+        if (savedTheme === 'dark') {
+          document.body.classList.add('dark-mode');
+        }
+        if (savedScheme) {
+          const schemeClass = savedScheme.replace('light-', '').replace('dark-', '');
+          if (schemeClass && schemeClass !== 'default') {
+            document.body.classList.add(savedTheme === 'dark' ? 'dark-' + schemeClass : 'light-' + schemeClass);
+          }
+        }
+      })();
+    </script>
   </body>
 </html>

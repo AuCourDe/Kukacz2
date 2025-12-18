@@ -27,21 +27,13 @@
                     </div>
                 </div>
                 <div class="header-nav">
-                    <a href="{{ url_for('dashboard') }}">Wyjść z ustawień</a>
+                    <a href="{{ url_for('dashboard') }}">Wyjdź z ustawień</a>
                     <a href="{{ url_for('logout') }}">Wyloguj</a>
                 </div>
             </div>
         </header>
 
         <main>
-            {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="flash {{ category }}">{{ message }}</div>
-                    {% endfor %}
-                {% endif %}
-            {% endwith %}
-
             <section class="card">
                 <!-- Tabs navigation -->
                 <div class="tabs">
@@ -50,8 +42,8 @@
                             {{ cat_info.icon }} {{ cat_info.name }}
                         </button>
                     {% endfor %}
-                    <a href="{{ url_for('settings_prompts') }}" class="tab-btn" style="text-decoration: none;">
-                        📝 Prompty analizy
+                    <a href="{{ url_for('settings_prompts') }}" class="tab-btn tab-link" style="text-decoration: none;">
+                        Prompty analizy
                     </a>
                 </div>
 
@@ -59,7 +51,7 @@
                 <form action="{{ url_for('settings_save') }}" method="post">
                     {% for cat_key, cat_data in settings.items() %}
                         <div id="tab-{{ cat_key }}" class="tab-content {% if loop.first %}active{% endif %}">
-                            <h2>{{ cat_data.icon }} {{ cat_data.name }}</h2>
+                            <h2>{{ cat_data.name }}</h2>
                             <p style="color: #666; margin-bottom: 20px;">{{ cat_data.description }}</p>
                             
                             <div class="setting-group">
@@ -130,5 +122,15 @@
     <form id="restart-form" action="{{ url_for('settings_restart') }}" method="post" style="display: none;"></form>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Show flash messages as toasts
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    showToast('{{ message|e }}', '{{ category }}');
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </script>
 </body>
 </html>

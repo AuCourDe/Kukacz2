@@ -434,15 +434,33 @@ Odpowiedz w formacie JSON. Wszystkie teksty w odpowiedzi muszą być w języku p
         flash("Restart systemu zaplanowany. Aplikacja zostanie zrestartowana...", "info")
         
         def delayed_restart():
+            import subprocess
             time.sleep(1)  # Daj czas na wysłanie odpowiedzi
             logger.info("Wykonywanie restartu systemu...")
             
-            # Zapisz PID do pliku sygnałowego
-            restart_signal_file = Path(__file__).parent.parent / ".restart_signal"
-            restart_signal_file.write_text(str(os.getpid()))
+            # Uruchom nową instancję aplikacji przed zamknięciem starej
+            python_executable = sys.executable
+            script_args = sys.argv.copy()
             
-            # Wyślij sygnał do własnego procesu
-            os.kill(os.getpid(), signal.SIGTERM)
+            # Usuń ewentualne argumenty które mogłyby powodować problemy
+            env = os.environ.copy()
+            
+            try:
+                # Uruchom nowy proces w tle
+                subprocess.Popen(
+                    [python_executable] + script_args,
+                    env=env,
+                    start_new_session=True,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL
+                )
+                logger.info("Nowa instancja uruchomiona, zamykanie starej...")
+                time.sleep(0.5)
+            except Exception as e:
+                logger.error(f"Błąd uruchamiania nowej instancji: {e}")
+            
+            # Zakończ bieżący proces
+            os._exit(0)
         
         threading.Thread(target=delayed_restart, daemon=True).start()
         _restart_requested = True

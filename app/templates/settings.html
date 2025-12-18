@@ -79,13 +79,11 @@
                                                     {% endfor %}
                                                 </select>
                                             {% elif setting.type == 'number' %}
-                                                <input type="number" 
+                                                <input type="text" 
                                                        name="setting_{{ setting_key }}" 
                                                        id="setting_{{ setting_key }}"
                                                        value="{{ setting.value }}"
-                                                       {% if setting.min is defined %}min="{{ setting.min }}"{% endif %}
-                                                       {% if setting.max is defined %}max="{{ setting.max }}"{% endif %}
-                                                       {% if setting.step is defined %}step="{{ setting.step }}"{% endif %}>
+                                                       inputmode="decimal">
                                             {% elif setting.type == 'password' %}
                                                 <input type="password" 
                                                        name="setting_{{ setting_key }}" 

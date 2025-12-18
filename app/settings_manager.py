@@ -551,8 +551,17 @@ class SettingsManager:
     def save_settings(self, settings: Dict[str, str]) -> Tuple[bool, str]:
         """Zapisuje ustawienia do pliku .env."""
         try:
-            # Walidacja
+            # Normalizuj wartości liczbowe (przecinek -> kropka)
+            normalized_settings = {}
             for key, value in settings.items():
+                if key in SETTINGS_DEFINITIONS:
+                    definition = SETTINGS_DEFINITIONS[key]
+                    if definition.get("type") == "number":
+                        value = value.replace(",", ".")
+                normalized_settings[key] = value
+            
+            # Walidacja
+            for key, value in normalized_settings.items():
                 if key not in SETTINGS_DEFINITIONS:
                     continue  # Ignoruj nieznane klucze
                 
@@ -564,12 +573,12 @@ class SettingsManager:
             current_values = self._read_env_file()
             
             # Zaktualizuj wartości
-            current_values.update(settings)
+            current_values.update(normalized_settings)
             
             # Zapisz do pliku
             self._write_env_file(current_values)
             
-            logger.info(f"Zapisano {len(settings)} ustawień do {self.env_path}")
+            logger.info(f"Zapisano {len(normalized_settings)} ustawień do {self.env_path}")
             return True, "Ustawienia zapisane pomyślnie"
             
         except Exception as e:
@@ -673,15 +682,11 @@ class SettingsManager:
         setting_type = definition.get("type", "text")
         
         if setting_type == "number":
+            # Zamień przecinek na kropkę dla obsługi różnych ustawień regionalnych
+            normalized_value = value.replace(",", ".")
             try:
-                num_value = float(value)
-                min_val = definition.get("min")
-                max_val = definition.get("max")
-                
-                if min_val is not None and num_value < min_val:
-                    return False, f"Wartość musi być >= {min_val}"
-                if max_val is not None and num_value > max_val:
-                    return False, f"Wartość musi być <= {max_val}"
+                float(normalized_value)
+                # Brak walidacji min/max - użytkownik wie co robi
             except ValueError:
                 return False, "Wartość musi być liczbą"
         

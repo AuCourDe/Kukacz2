@@ -18,15 +18,32 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 import torch
 import torch.serialization
-import whisper
 from cryptography.fernet import Fernet
 
-# Workaround for PyTorch 2.6+ weights_only=True default
+# Workaround for PyTorch 2.6+ weights_only=True breaking whisper model loading
+# The whisper library uses weights_only=True but the checkpoint contains TorchVersion
 # See: https://pytorch.org/docs/stable/generated/torch.load.html
-try:
-    torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
-except (AttributeError, TypeError):
-    pass  # Older PyTorch versions don't need this
+def _patch_torch_load_for_whisper():
+    """Patch torch.load to handle weights_only issues in PyTorch 2.6+"""
+    _original_torch_load = torch.load
+    
+    def _patched_load(*args, **kwargs):
+        try:
+            return _original_torch_load(*args, **kwargs)
+        except Exception as e:
+            error_msg = str(e)
+            # If weights_only causes the error, retry with weights_only=False
+            if "weights_only" in error_msg or "WeightsUnpickler" in error_msg:
+                kwargs["weights_only"] = False
+                return _original_torch_load(*args, **kwargs)
+            raise
+    
+    torch.load = _patched_load
+
+# Apply patch before importing whisper
+_patch_torch_load_for_whisper()
+
+import whisper
 
 from .config import (
     MODEL_CACHE_DIR,

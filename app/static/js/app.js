@@ -385,9 +385,9 @@ function confirmDelete(number) {
     }
 }
 
-function confirmRestart() {
-    if (confirm('Czy na pewno chcesz zrestartować system? Wszystkie niezapisane zmiany zostaną utracone.')) {
-        document.getElementById('restart-form').submit();
+function confirmReload() {
+    if (confirm('Czy na pewno chcesz przeładować ustawienia? Nowe wartości zostaną zastosowane.')) {
+        document.getElementById('reload-form').submit();
     }
 }
 
@@ -448,5 +448,5 @@ document.addEventListener('DOMContentLoaded', function() {
 // Make functions globally available
 window.togglePrompt = togglePrompt;
 window.confirmDelete = confirmDelete;
-window.confirmRestart = confirmRestart;
+window.confirmReload = confirmReload;
 window.showToast = showToast;

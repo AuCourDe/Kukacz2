@@ -4,16 +4,20 @@ Kolejka przetwarzania plików audio dla interfejsu webowego.
 """
 from __future__ import annotations
 
+import json
 import logging
 import math
 import threading
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
+
+# Plik do persistencji kolejki
+QUEUE_PERSISTENCE_FILE = Path(__file__).parent.parent / ".queue_state.json"
 
 
 def _get_audio_duration_seconds(file_path: Path) -> float:
@@ -107,15 +111,96 @@ class QueueItem:
             "error": self.error,
             "result_files": self.result_files,
         }
+    
+    def to_persistence_dict(self) -> Dict:
+        """Serializuje element do zapisu w pliku."""
+        return {
+            "id": self.id,
+            "filename": self.filename,
+            "size_bytes": self.size_bytes,
+            "input_path": str(self.input_path),
+            "status": self.status,
+            "created_at": self._format_datetime(self.created_at),
+            "started_at": self._format_datetime(self.started_at),
+            "finished_at": self._format_datetime(self.finished_at),
+            "error": self.error,
+            "estimated_minutes": self.estimated_minutes,
+            "result_files": self.result_files,
+        }
+    
+    @classmethod
+    def from_persistence_dict(cls, data: Dict) -> "QueueItem":
+        """Odtwarza element z zapisanych danych."""
+        def parse_dt(val):
+            if val is None:
+                return None
+            try:
+                return datetime.fromisoformat(val)
+            except:
+                return None
+        
+        return cls(
+            id=data["id"],
+            filename=data["filename"],
+            size_bytes=data.get("size_bytes", 0),
+            input_path=Path(data["input_path"]),
+            status=data.get("status", "queued"),
+            created_at=parse_dt(data.get("created_at")) or _utcnow(),
+            started_at=parse_dt(data.get("started_at")),
+            finished_at=parse_dt(data.get("finished_at")),
+            error=data.get("error"),
+            estimated_minutes=data.get("estimated_minutes", 1),
+            result_files=data.get("result_files", {}),
+        )
 
 
 class ProcessingQueue:
     """Prosta, jawna kolejka przetwarzania widoczna w interfejsie webowym."""
 
-    def __init__(self) -> None:
+    def __init__(self, persistence_file: Optional[Path] = None) -> None:
         self._items: Dict[str, QueueItem] = {}
         self._order: List[str] = []
         self._lock = threading.Lock()
+        self._persistence_file = persistence_file or QUEUE_PERSISTENCE_FILE
+        self._load_state()
+
+    def _load_state(self) -> None:
+        """Wczytuje stan kolejki z pliku."""
+        if not self._persistence_file.exists():
+            return
+        
+        try:
+            with open(self._persistence_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            
+            for item_data in data.get("items", []):
+                try:
+                    item = QueueItem.from_persistence_dict(item_data)
+                    # Zadania "processing" przy restarcie oznacz jako failed
+                    if item.status == "processing":
+                        item.status = "failed"
+                        item.error = "Przerwane przez restart systemu"
+                        item.finished_at = _utcnow()
+                    self._items[item.id] = item
+                    self._order.append(item.id)
+                except Exception as e:
+                    logger.warning(f"Błąd odtwarzania elementu kolejki: {e}")
+            
+            logger.info(f"Wczytano {len(self._items)} elementów z kolejki")
+        except Exception as e:
+            logger.error(f"Błąd wczytywania stanu kolejki: {e}")
+
+    def _save_state(self) -> None:
+        """Zapisuje stan kolejki do pliku."""
+        try:
+            data = {
+                "items": [self._items[item_id].to_persistence_dict() for item_id in self._order],
+                "saved_at": datetime.now(timezone.utc).isoformat(),
+            }
+            with open(self._persistence_file, "w", encoding="utf-8") as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.error(f"Błąd zapisu stanu kolejki: {e}")
 
     def enqueue(self, file_path: Path) -> QueueItem:
         """Dodaje nowy plik do kolejki."""
@@ -130,6 +215,7 @@ class ProcessingQueue:
         with self._lock:
             self._items[item.id] = item
             self._order.append(item.id)
+            self._save_state()
         return item
 
     def get_item(self, item_id: str) -> Optional[QueueItem]:
@@ -143,6 +229,7 @@ class ProcessingQueue:
                 item.status = "processing"
                 item.started_at = _utcnow()
                 item.error = None
+                self._save_state()
 
     def mark_completed(self, item_id: str, result_files: Dict[str, str]) -> None:
         with self._lock:
@@ -152,6 +239,7 @@ class ProcessingQueue:
                 item.finished_at = _utcnow()
                 item.result_files = result_files
                 item.error = None
+                self._save_state()
 
     def mark_failed(self, item_id: str, error_message: str) -> None:
         with self._lock:
@@ -160,10 +248,12 @@ class ProcessingQueue:
                 item.status = "failed"
                 item.finished_at = _utcnow()
                 item.error = error_message
+                self._save_state()
 
     def serialize(self) -> List[Dict]:
         with self._lock:
-            return [self._items[item_id].to_dict() for item_id in self._order]
+            # Wyświetlaj najnowsze zadania na górze (odwrócona kolejność)
+            return [self._items[item_id].to_dict() for item_id in reversed(self._order)]
 
     def get_result_file(self, item_id: str, file_type: str) -> Optional[str]:
         with self._lock:

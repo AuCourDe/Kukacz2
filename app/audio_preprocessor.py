@@ -12,31 +12,38 @@ Zawiera funkcje do:
 
 import logging
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional
 import numpy as np
 
 try:
-    import librosa
-    import soundfile as sf
-    AUDIO_LIBS_AVAILABLE = True
+    from pydub import AudioSegment
+    from pydub.effects import normalize, compress_dynamic_range, high_pass_filter, low_pass_filter
+    PYDUB_AVAILABLE = True
 except ImportError:
-    AUDIO_LIBS_AVAILABLE = False
-    logging.warning("Niektóre biblioteki audio nie są dostępne. Preprocessing audio będzie wyłączony.")
+    PYDUB_AVAILABLE = False
+    logging.warning("pydub nie jest dostępne. Podstawowe efekty audio będą niedostępne.")
 
 try:
     import noisereduce as nr
+    import librosa
+    import soundfile as sf
     NOISE_REDUCE_AVAILABLE = True
 except ImportError:
     NOISE_REDUCE_AVAILABLE = False
-    logging.warning("noisereduce nie jest dostępne. Odszumianie będzie wyłączone.")
+    logging.warning("noisereduce/librosa nie jest dostępne. Odszumianie będzie wyłączone.")
 
 from .config import (
     AUDIO_PREPROCESS_ENABLED,
     AUDIO_PREPROCESS_NOISE_REDUCE,
+    AUDIO_PREPROCESS_NOISE_STRENGTH,
     AUDIO_PREPROCESS_NORMALIZE,
     AUDIO_PREPROCESS_GAIN_DB,
     AUDIO_PREPROCESS_COMPRESSOR,
+    AUDIO_PREPROCESS_COMP_THRESHOLD,
+    AUDIO_PREPROCESS_COMP_RATIO,
+    AUDIO_PREPROCESS_SPEAKER_LEVELING,
     AUDIO_PREPROCESS_EQ,
+    AUDIO_PREPROCESS_HIGHPASS,
 )
 
 logger = logging.getLogger(__name__)
@@ -49,24 +56,34 @@ class AudioPreprocessor:
         self,
         enabled: bool = True,
         noise_reduce: bool = True,
+        noise_strength: float = 0.75,
         normalize: bool = True,
         gain_db: float = 3.0,
         compressor: bool = True,
+        comp_threshold: float = -20.0,
+        comp_ratio: float = 4.0,
+        speaker_leveling: bool = True,
         eq: bool = True,
+        highpass: int = 100,
     ):
-        self.enabled = enabled and AUDIO_LIBS_AVAILABLE
+        self.enabled = enabled and PYDUB_AVAILABLE
         self.noise_reduce = noise_reduce and NOISE_REDUCE_AVAILABLE
+        self.noise_strength = max(0.0, min(1.0, noise_strength))
         self.normalize = normalize
         self.gain_db = gain_db
         self.compressor = compressor
+        self.comp_threshold = comp_threshold
+        self.comp_ratio = max(1.0, comp_ratio)
+        self.speaker_leveling = speaker_leveling
         self.eq = eq
+        self.highpass = max(50, min(300, highpass))
         
-        if not AUDIO_LIBS_AVAILABLE:
-            logger.warning("AudioPreprocessor: biblioteki audio nie są dostępne. Preprocessing wyłączony.")
+        if not PYDUB_AVAILABLE:
+            logger.warning("AudioPreprocessor: pydub nie jest dostępne. Preprocessing wyłączony.")
         elif not self.enabled:
             logger.info("AudioPreprocessor: preprocessing wyłączony przez konfigurację")
         else:
-            logger.info(f"AudioPreprocessor zainicjalizowany (noise_reduce={self.noise_reduce}, normalize={self.normalize}, gain={self.gain_db}dB)")
+            logger.info(f"AudioPreprocessor zainicjalizowany (noise={self.noise_reduce}/{self.noise_strength:.0%}, normalize={self.normalize}, gain={self.gain_db}dB, comp={self.compressor}/{self.comp_threshold}dB/{self.comp_ratio}:1, leveling={self.speaker_leveling})")
     
     def process(self, input_path: Path, output_path: Optional[Path] = None) -> Optional[Path]:
         """
@@ -79,12 +96,14 @@ class AudioPreprocessor:
         Returns:
             Ścieżka do przetworzonego pliku lub None w przypadku błędu
         """
+        input_path = Path(input_path)
+        
         if not self.enabled:
             logger.debug("AudioPreprocessor: preprocessing wyłączony, zwracam oryginalny plik")
             return input_path
         
-        if not AUDIO_LIBS_AVAILABLE:
-            logger.warning("AudioPreprocessor: biblioteki nie są dostępne, zwracam oryginalny plik")
+        if not PYDUB_AVAILABLE:
+            logger.warning("AudioPreprocessor: pydub nie jest dostępne, zwracam oryginalny plik")
             return input_path
         
         try:
@@ -93,72 +112,58 @@ class AudioPreprocessor:
             # Określenie pliku wyjściowego
             if output_path is None:
                 output_path = self._generate_output_path(input_path)
+            else:
+                output_path = Path(output_path)
             
-            # Wczytanie audio
-            y, sr = librosa.load(str(input_path), sr=None, mono=True)
-            original_length = len(y)
+            # Wczytanie audio przez pydub
+            audio = AudioSegment.from_file(str(input_path))
+            original_dbfs = audio.dBFS
             
-            logger.debug(f"Wczytano audio: {original_length} próbek, {sr}Hz")
+            logger.debug(f"Wczytano audio: {len(audio)}ms, {audio.frame_rate}Hz, {audio.channels} kanałów, {original_dbfs:.1f}dBFS")
             
-            # Zastosowanie wszystkich włączonych funkcji
-            processed = y.copy()
-            
-            # 1. Odszumianie (delikatniejsze parametry dla lepszej jakości mowy)
-            if self.noise_reduce:
-                logger.debug("Stosowanie odszumiania...")
-                try:
-                    # Optymalne parametry dla transkrypcji mowy:
-                    # - prop_decrease=0.5: delikatniejsza redukcja (0.8 domyślnie)
-                    # - stationary=True: dla większości nagrań call center
-                    # - time_constant_s=0.01: szybsza adaptacja
-                    processed = nr.reduce_noise(
-                        y=processed, 
-                        sr=sr,
-                        stationary=True,
-                        prop_decrease=0.5,  # Delikatniejsza redukcja (domyślnie 0.8)
-                        time_constant_s=0.01,  # Szybsza adaptacja
-                        freq_mask_smooth_hz=500  # Wygładzenie maski
-                    )
-                except Exception as e:
-                    logger.warning(f"Błąd podczas odszumiania: {e}, kontynuuję bez odszumiania")
-                    # Kontynuuj bez odszumiania w przypadku błędu
-            
-            # 2. Normalizacja głośności
-            if self.normalize:
-                logger.debug("Stosowanie normalizacji...")
-                # Normalizacja do zakresu [-1, 1] z zachowaniem proporcji
-                max_val = np.abs(processed).max()
-                if max_val > 0:
-                    processed = processed / max_val * 0.95  # 0.95 aby uniknąć clippingu
-            
-            # 3. Podbicie głośności (gain) - mniejsze wzmocnienie dla lepszej jakości
-            if self.gain_db != 0:
-                logger.debug(f"Stosowanie gain: {self.gain_db}dB...")
-                gain_linear = 10 ** (self.gain_db / 20)
-                processed = processed * gain_linear
-                # Obcięcie do zakresu [-1, 1] - delikatne clipping
-                processed = np.clip(processed, -0.98, 0.98)  # Zostawiamy margines
-            
-            # 4. Kompresor (dynamic range compression)
-            if self.compressor:
-                logger.debug("Stosowanie kompresora...")
-                processed = self._apply_compressor(processed, sr)
-            
-            # 5. EQ (equalizer) - wzmocnienie średnich częstotliwości (mowa)
+            # 1. High-pass filter (EQ - usunięcie niskich częstotliwości) - NAJPIERW
             if self.eq:
-                logger.debug("Stosowanie EQ...")
-                processed = self._apply_eq(processed, sr)
+                logger.info(f"Stosowanie EQ (high-pass {self.highpass}Hz, low-pass 8000Hz)...")
+                audio = high_pass_filter(audio, cutoff=self.highpass)
+                if audio.frame_rate > 16000:
+                    audio = low_pass_filter(audio, cutoff=8000)
             
-            # Ostateczna normalizacja po wszystkich operacjach
-            max_val = np.abs(processed).max()
-            if max_val > 0:
-                processed = processed / max_val * 0.95
+            # 2. Odszumianie (używa noisereduce przez numpy)
+            if self.noise_reduce and NOISE_REDUCE_AVAILABLE:
+                logger.info(f"Stosowanie odszumiania (siła: {self.noise_strength:.0%})...")
+                audio = self._apply_noise_reduction(audio)
+            
+            # 3. Wyrównywanie głośności mówców (PRZED kompresorem)
+            if self.speaker_leveling:
+                logger.info("Wyrównywanie głośności mówców...")
+                audio = self._apply_speaker_leveling(audio)
+            
+            # 4. Kompresor dynamiki
+            if self.compressor:
+                logger.info(f"Stosowanie kompresora (próg: {self.comp_threshold}dB, ratio: {self.comp_ratio}:1)...")
+                audio = compress_dynamic_range(
+                    audio,
+                    threshold=self.comp_threshold,
+                    ratio=self.comp_ratio,
+                    attack=5.0,
+                    release=50.0
+                )
+            
+            # 5. Normalizacja głośności
+            if self.normalize:
+                logger.info("Stosowanie normalizacji...")
+                audio = normalize(audio, headroom=0.5)  # Normalizuj do -0.5dBFS
+            
+            # 6. Podbicie głośności (gain) - NA KOŃCU
+            if self.gain_db != 0:
+                logger.info(f"Stosowanie gain: {self.gain_db}dB...")
+                audio = audio + self.gain_db
             
             # Zapisanie przetworzonego pliku
-            sf.write(str(output_path), processed, sr)
+            audio.export(str(output_path), format="wav")
             
-            logger.info(f"Preprocessing zakończony: {output_path.name}")
-            logger.debug(f"Długość audio: {original_length} -> {len(processed)} próbek")
+            final_dbfs = audio.dBFS
+            logger.info(f"Preprocessing zakończony: {output_path.name} (głośność: {original_dbfs:.1f}dB -> {final_dbfs:.1f}dB)")
             
             return output_path
             
@@ -166,117 +171,96 @@ class AudioPreprocessor:
             logger.error(f"Błąd podczas preprocessing audio {input_path.name}: {e}", exc_info=True)
             return input_path  # Zwróć oryginalny plik w przypadku błędu
     
-    def _generate_output_path(self, input_path: Path) -> Path:
-        """Generuje ścieżkę do pliku wyjściowego z dopiskiem '_processed'"""
-        return input_path.parent / f"{input_path.stem}_processed{input_path.suffix}"
-    
-    def _apply_compressor(self, audio: np.ndarray, sr: int, ratio: float = 2.0, threshold: float = 0.8, attack: float = 0.005, release: float = 0.1) -> np.ndarray:
-        """
-        Stosuje kompresor dynamiki do audio.
-        
-        Args:
-            audio: Sygnał audio
-            sr: Sample rate
-            ratio: Współczynnik kompresji (4.0 = 4:1)
-            threshold: Próg kompresji (0-1)
-            attack: Czas ataku w sekundach
-            release: Czas zwolnienia w sekundach
-        """
+    def _apply_noise_reduction(self, audio: AudioSegment) -> AudioSegment:
+        """Stosuje odszumianie używając biblioteki noisereduce"""
         try:
-            # Prostý kompresor implementacja
-            threshold_linear = threshold
-            ratio_inv = 1.0 / ratio
+            # Konwersja do numpy
+            samples = np.array(audio.get_array_of_samples())
             
-            # Envelope follower (RMS)
-            frame_length = int(sr * 0.01)  # 10ms frames
-            if frame_length < 1:
-                frame_length = 1
+            # Konwersja do float
+            if audio.sample_width == 2:
+                samples = samples.astype(np.float32) / 32768.0
+            elif audio.sample_width == 1:
+                samples = (samples.astype(np.float32) - 128) / 128.0
+            else:
+                samples = samples.astype(np.float32)
             
-            envelope = np.zeros_like(audio)
-            for i in range(0, len(audio), frame_length):
-                end = min(i + frame_length, len(audio))
-                rms = np.sqrt(np.mean(audio[i:end] ** 2))
-                envelope[i:end] = rms
+            # Jeśli stereo, weź średnią
+            if audio.channels == 2:
+                samples = samples.reshape((-1, 2)).mean(axis=1)
             
-            # Compression gain
-            gain = np.ones_like(audio)
-            over_threshold = envelope > threshold_linear
-            
-            # Dla sygnałów powyżej progu, zastosuj kompresję
-            excess = envelope - threshold_linear
-            compressed_excess = excess * ratio_inv
-            target_level = threshold_linear + compressed_excess
-            
-            gain[over_threshold] = np.where(
-                envelope[over_threshold] > 0,
-                target_level[over_threshold] / envelope[over_threshold],
-                1.0
+            # Zastosuj noise reduction z konfigurowalna siłą
+            reduced = nr.reduce_noise(
+                y=samples,
+                sr=audio.frame_rate,
+                stationary=True,
+                prop_decrease=self.noise_strength,  # Konfigurowalna siła redukcji
+                time_constant_s=0.02,
+                freq_mask_smooth_hz=500
             )
             
-            # Smoothing (attack/release)
-            smoothed_gain = self._smooth_envelope(gain, sr, attack, release)
+            # Konwersja z powrotem do int16
+            reduced = np.clip(reduced * 32768, -32768, 32767).astype(np.int16)
             
-            return audio * smoothed_gain
+            # Tworzenie nowego AudioSegment
+            return AudioSegment(
+                data=reduced.tobytes(),
+                sample_width=2,
+                frame_rate=audio.frame_rate,
+                channels=1
+            )
             
         except Exception as e:
-            logger.warning(f"Błąd podczas kompresji: {e}, zwracam oryginalny audio")
+            logger.warning(f"Błąd podczas odszumiania: {e}, kontynuuję bez odszumiania")
             return audio
     
-    def _apply_eq(self, audio: np.ndarray, sr: int) -> np.ndarray:
+    def _apply_speaker_leveling(self, audio: AudioSegment) -> AudioSegment:
         """
-        Stosuje EQ wzmacniający zakres częstotliwości mowy (szerszy zakres dla lepszej jakości).
-        
-        Args:
-            audio: Sygnał audio
-            sr: Sample rate
+        Wyrównuje głośność różnych fragmentów audio (mówców).
+        Dzieli audio na segmenty i normalizuje każdy z nich, 
+        następnie składa z powrotem z płynnymi przejściami.
         """
         try:
-            # Szerszy zakres częstotliwości mowy dla lepszej jakości:
-            # 80-8000Hz zamiast 300-3400Hz (telefon) - zachowuje więcej informacji
-            nyquist = sr / 2
+            # Podziel audio na segmenty po 2 sekundy
+            segment_length_ms = 2000
+            segments = []
             
-            # Filtry IIR (Butterworth) - delikatniejsze
-            from scipy import signal
+            for i in range(0, len(audio), segment_length_ms):
+                segment = audio[i:i + segment_length_ms]
+                if len(segment) > 100:  # Minimalny segment
+                    # Sprawdź głośność segmentu
+                    if segment.dBFS > -50:  # Nie jest ciszą
+                        # Normalizuj do docelowej głośności
+                        target_dbfs = -18.0  # Docelowa głośność
+                        change = target_dbfs - segment.dBFS
+                        # Ogranicz zmianę do ±15dB aby uniknąć artefaktów
+                        change = max(-15, min(15, change))
+                        segment = segment + change
+                    segments.append(segment)
+                else:
+                    segments.append(segment)
             
-            # High-pass filter (80Hz) - usunięcie bardzo niskich częstotliwości (szum)
-            # Zamiast 300Hz dla zachowania naturalności głosu
-            if nyquist > 80:
-                sos_high = signal.butter(2, 80 / nyquist, btype='high', output='sos')
-                audio = signal.sosfilt(sos_high, audio)
+            if not segments:
+                return audio
             
-            # Low-pass filter (8000Hz) - zachowanie wysokich częstotliwości dla klarowności
-            # Zamiast 3400Hz dla lepszej jakości mowy
-            if nyquist > 8000:
-                sos_low = signal.butter(2, 8000 / nyquist, btype='low', output='sos')
-                audio = signal.sosfilt(sos_low, audio)
+            # Złóż segmenty z crossfade dla płynnych przejść
+            result = segments[0]
+            crossfade_ms = min(50, segment_length_ms // 4)
             
-            # Delikatniejsze wzmocnienie (1dB zamiast 2dB) - mniej artefaktów
-            audio = audio * (10 ** (1.0 / 20))
+            for segment in segments[1:]:
+                if len(segment) > crossfade_ms and len(result) > crossfade_ms:
+                    result = result.append(segment, crossfade=crossfade_ms)
+                else:
+                    result = result + segment
             
-            return audio
+            logger.debug(f"Speaker leveling: {len(segments)} segmentów przetworzonych")
+            return result
             
-        except ImportError:
-            logger.warning("scipy nie jest dostępne, pomijam EQ")
-            return audio
         except Exception as e:
-            logger.warning(f"Błąd podczas EQ: {e}, zwracam oryginalny audio")
+            logger.warning(f"Błąd podczas wyrównywania głośności: {e}, kontynuuję bez zmian")
             return audio
     
-    def _smooth_envelope(self, envelope: np.ndarray, sr: int, attack: float, release: float) -> np.ndarray:
-        """Wygładza envelope z czasami attack i release"""
-        smoothed = np.zeros_like(envelope)
-        smoothed[0] = envelope[0]
-        
-        attack_coeff = np.exp(-1.0 / (attack * sr))
-        release_coeff = np.exp(-1.0 / (release * sr))
-        
-        for i in range(1, len(envelope)):
-            if envelope[i] > smoothed[i-1]:
-                # Attack
-                smoothed[i] = envelope[i] + (smoothed[i-1] - envelope[i]) * attack_coeff
-            else:
-                # Release
-                smoothed[i] = envelope[i] + (smoothed[i-1] - envelope[i]) * release_coeff
-        
-        return smoothed
+    def _generate_output_path(self, input_path: Path) -> Path:
+        """Generuje ścieżkę do pliku wyjściowego z dopiskiem '_processed'"""
+        return input_path.parent / f"{input_path.stem}_processed.wav"
 

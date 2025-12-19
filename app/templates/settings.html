@@ -48,7 +48,8 @@
                 </div>
 
                 <!-- Settings form -->
-                <form action="{{ url_for('settings_save') }}" method="post">
+                <form action="{{ url_for('settings_save') }}" method="post" id="settings-form">
+                    <input type="hidden" name="current_tab" id="current_tab" value="">
                     {% for cat_key, cat_data in settings.items() %}
                         <div id="tab-{{ cat_key }}" class="tab-content {% if loop.first %}active{% endif %}">
                             <h2>{{ cat_data.name }}</h2>
@@ -58,10 +59,13 @@
                                 {% for setting_key, setting in cat_data.settings.items() %}
                                     <div class="setting-row">
                                         <div>
-                                            <div class="setting-label">{{ setting_key }}</div>
+                                            <div class="setting-label">{{ setting_key }}{% if setting.requires_restart %} <strong style="color: #dc3545;">(!)</strong>{% endif %}</div>
                                             <div class="setting-desc">{{ setting.description }}</div>
                                             {% if setting.alternatives %}
                                                 <div class="setting-alt">Alternatywy: {{ setting.alternatives }}</div>
+                                            {% endif %}
+                                            {% if setting_key == 'OLLAMA_MODEL' %}
+                                                <div class="setting-alt" id="ollama-models-info">Dostępne modele: ładowanie...</div>
                                             {% endif %}
                                         </div>
                                         <div>
@@ -84,6 +88,23 @@
                                                        id="setting_{{ setting_key }}"
                                                        value="{{ setting.value }}"
                                                        inputmode="decimal">
+                                            {% elif setting.type == 'password_change' %}
+                                                <div class="password-change-group">
+                                                    <input type="password" 
+                                                           name="setting_{{ setting_key }}" 
+                                                           id="setting_{{ setting_key }}"
+                                                           placeholder="Nowe hasło (pozostaw puste aby nie zmieniać)"
+                                                           autocomplete="new-password"
+                                                           onkeyup="checkPasswordStrength(this)">
+                                                    <input type="password" 
+                                                           name="setting_{{ setting_key }}_confirm" 
+                                                           id="setting_{{ setting_key }}_confirm"
+                                                           placeholder="Potwierdź nowe hasło"
+                                                           autocomplete="new-password"
+                                                           onkeyup="checkPasswordMatch('{{ setting_key }}')">
+                                                    <div id="password-strength" class="password-strength"></div>
+                                                    <div id="password-match" class="password-match"></div>
+                                                </div>
                                             {% elif setting.type == 'password' %}
                                                 <input type="password" 
                                                        name="setting_{{ setting_key }}" 
@@ -100,24 +121,49 @@
                                     </div>
                                 {% endfor %}
                             </div>
+                            
+                            {% if cat_key == 'audio' %}
+                            <!-- Audio Test Section - na końcu ustawień audio -->
+                            <div class="setting-group" style="margin-top: 25px; border-top: 1px solid var(--border-color); padding-top: 20px;">
+                                <h3 style="margin-bottom: 15px;">Test przetwarzania</h3>
+                                <div class="setting-row">
+                                    <div>
+                                        <div class="setting-label">Testuj ustawienia</div>
+                                        <div class="setting-desc">Załaduj próbkę audio (max 30s) i przetwórz zgodnie z powyższymi ustawieniami</div>
+                                    </div>
+                                    <div style="display: flex; gap: 10px; align-items: center;">
+                                        <input type="file" id="test-audio-file" accept=".mp3,.wav,.ogg,.m4a,.flac,.aac" style="display: none;">
+                                        <button type="button" class="btn btn-primary" onclick="document.getElementById('test-audio-file').click()">Wybierz plik</button>
+                                        <button type="button" class="btn btn-primary" onclick="testAudioPreprocess()">Przetwórz</button>
+                                    </div>
+                                </div>
+                                <div id="audio-test-filename" style="padding: 10px 15px; font-size: 0.9em; color: var(--text-secondary);"></div>
+                                <div id="audio-test-result" style="display: none; padding: 15px; border-radius: 8px; background: var(--bg-secondary);">
+                                    <p style="margin: 0 0 10px 0;"><strong>Wynik:</strong> <span id="audio-test-info"></span></p>
+                                    <audio id="audio-test-player" controls style="width: 100%; margin: 10px 0;"></audio>
+                                    <a id="audio-test-download" href="#" class="btn btn-secondary" download="processed_audio.wav">Pobierz</a>
+                                </div>
+                                <div id="audio-test-error" style="display: none; padding: 10px 15px; color: #dc3545;"></div>
+                            </div>
+                            {% endif %}
                         </div>
                     {% endfor %}
 
                     <div style="display: flex; gap: 15px; margin-top: 25px; flex-wrap: wrap;">
                         <button type="submit" class="btn btn-primary">Zapisz ustawienia</button>
-                        <button type="button" class="btn btn-warning" onclick="confirmRestart()">Restartuj system</button>
+                        <button type="button" class="btn btn-warning" onclick="confirmReload()">Przeladuj ustawienia</button>
                     </div>
                 </form>
             </section>
         </main>
 
         <footer>
-            Zmiany aktywne po zapisaniu i zrestartowaniu systemu.
+            Zmiany aktywne po zapisaniu i przeladowaniu ustawien. <strong style="color: #dc3545;">(!)</strong> = wymaga recznego restartu aplikacji (Ctrl+C + ./run.sh)
         </footer>
     </div>
 
-    <!-- Restart form (hidden) -->
-    <form id="restart-form" action="{{ url_for('settings_restart') }}" method="post" style="display: none;"></form>
+    <!-- Reload form (hidden) -->
+    <form id="reload-form" action="{{ url_for('settings_reload') }}" method="post" style="display: none;"></form>
 
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script>
@@ -129,6 +175,259 @@
                 {% endfor %}
             {% endif %}
         {% endwith %}
+        
+        // Restore tab from URL parameter
+        (function() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const savedTab = urlParams.get('tab');
+            if (savedTab) {
+                // Activate saved tab
+                document.querySelectorAll('.tab-btn').forEach(t => t.classList.remove('active'));
+                document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+                
+                const tabBtn = document.querySelector(`.tab-btn[data-tab="${savedTab}"]`);
+                const tabContent = document.getElementById('tab-' + savedTab);
+                if (tabBtn) tabBtn.classList.add('active');
+                if (tabContent) tabContent.classList.add('active');
+            }
+        })();
+        
+        // Track current tab and update hidden field before form submit
+        document.querySelectorAll('.tab-btn[data-tab]').forEach(btn => {
+            btn.addEventListener('click', function() {
+                document.getElementById('current_tab').value = this.getAttribute('data-tab');
+            });
+        });
+        
+        // Set initial tab value
+        const activeTab = document.querySelector('.tab-btn.active[data-tab]');
+        if (activeTab) {
+            document.getElementById('current_tab').value = activeTab.getAttribute('data-tab');
+        }
+        
+        // Load Ollama models
+        fetch('/api/ollama-models')
+            .then(r => r.json())
+            .then(data => {
+                const info = document.getElementById('ollama-models-info');
+                if (info) {
+                    if (data.models && data.models.length > 0) {
+                        const status = data.available ? '✅' : '❌';
+                        info.innerHTML = `${status} Dostępne modele: <strong>${data.models.join(', ')}</strong>`;
+                        if (!data.available) {
+                            info.innerHTML += `<br><span style="color: #dc3545;">Wybrany model "${data.current}" nie jest dostępny!</span>`;
+                        }
+                    } else {
+                        info.innerHTML = '❌ Nie można połączyć się z serwerem Ollama';
+                    }
+                }
+            })
+            .catch(() => {
+                const info = document.getElementById('ollama-models-info');
+                if (info) info.innerHTML = '❌ Błąd pobierania listy modeli';
+            });
+        
+        // Password strength checker
+        function checkPasswordStrength(input) {
+            const password = input.value;
+            const strengthDiv = document.getElementById('password-strength');
+            if (!strengthDiv) return;
+            
+            if (!password) {
+                strengthDiv.innerHTML = '';
+                return;
+            }
+            
+            let strength = 0;
+            let messages = [];
+            
+            // Length check (8-12 chars)
+            if (password.length >= 8 && password.length <= 12) {
+                strength++;
+            } else if (password.length < 8) {
+                messages.push('Min. 8 znaków');
+            } else {
+                messages.push('Max. 12 znaków');
+            }
+            
+            // Uppercase check
+            if (/[A-Z]/.test(password)) {
+                strength++;
+            } else {
+                messages.push('Wielka litera');
+            }
+            
+            // Lowercase check
+            if (/[a-z]/.test(password)) {
+                strength++;
+            } else {
+                messages.push('Mała litera');
+            }
+            
+            // Digit check
+            if (/[0-9]/.test(password)) {
+                strength++;
+            } else {
+                messages.push('Cyfra');
+            }
+            
+            // Special char check
+            if (/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+                strength++;
+            } else {
+                messages.push('Znak specjalny');
+            }
+            
+            // Display strength (5 requirements total)
+            let color, label;
+            if (strength === 5) {
+                color = '#28a745';
+                label = '✓ Hasło spełnia wszystkie wymagania';
+            } else if (strength >= 3) {
+                color = '#ffc107';
+                label = 'Brakuje: ' + messages.join(', ');
+            } else {
+                color = '#dc3545';
+                label = 'Brakuje: ' + messages.join(', ');
+            }
+            
+            strengthDiv.innerHTML = `<span style="color: ${color};">${label}</span>`;
+        }
+        window.checkPasswordStrength = checkPasswordStrength;
+        
+        // Password match checker
+        function checkPasswordMatch(settingKey) {
+            const password = document.getElementById('setting_' + settingKey).value;
+            const confirm = document.getElementById('setting_' + settingKey + '_confirm').value;
+            const matchDiv = document.getElementById('password-match');
+            if (!matchDiv) return;
+            
+            if (!confirm) {
+                matchDiv.innerHTML = '';
+                return;
+            }
+            
+            if (password === confirm) {
+                matchDiv.innerHTML = '<span style="color: #28a745;">✓ Hasła są zgodne</span>';
+            } else {
+                matchDiv.innerHTML = '<span style="color: #dc3545;">✗ Hasła nie są zgodne</span>';
+            }
+        }
+        window.checkPasswordMatch = checkPasswordMatch;
+        
+        // Form validation before submit
+        document.getElementById('settings-form').addEventListener('submit', function(e) {
+            const passwordInput = document.getElementById('setting_WEB_PASSWORD');
+            const confirmInput = document.getElementById('setting_WEB_PASSWORD_confirm');
+            
+            if (passwordInput && confirmInput && passwordInput.value) {
+                const password = passwordInput.value;
+                const confirm = confirmInput.value;
+                
+                // Validate all password requirements
+                if (password.length < 8 || password.length > 12) {
+                    e.preventDefault();
+                    showToast('Hasło musi mieć 8-12 znaków', 'error');
+                    return;
+                }
+                if (!/[A-Z]/.test(password)) {
+                    e.preventDefault();
+                    showToast('Hasło musi zawierać wielką literę', 'error');
+                    return;
+                }
+                if (!/[a-z]/.test(password)) {
+                    e.preventDefault();
+                    showToast('Hasło musi zawierać małą literę', 'error');
+                    return;
+                }
+                if (!/[0-9]/.test(password)) {
+                    e.preventDefault();
+                    showToast('Hasło musi zawierać cyfrę', 'error');
+                    return;
+                }
+                if (!/[!@#$%^&*()_+\-=\[\]{};\':"\\|,.<>\/?]/.test(password)) {
+                    e.preventDefault();
+                    showToast('Hasło musi zawierać znak specjalny', 'error');
+                    return;
+                }
+                if (password !== confirm) {
+                    e.preventDefault();
+                    showToast('Hasła nie są zgodne', 'error');
+                    return;
+                }
+            }
+        });
+        
+        // Show selected filename
+        const testAudioInput = document.getElementById('test-audio-file');
+        if (testAudioInput) {
+            testAudioInput.addEventListener('change', function() {
+                const filenameDiv = document.getElementById('audio-test-filename');
+                if (this.files && this.files[0]) {
+                    filenameDiv.textContent = 'Wybrany plik: ' + this.files[0].name;
+                } else {
+                    filenameDiv.textContent = '';
+                }
+            });
+        }
+        
+        // Audio test function
+        async function testAudioPreprocess() {
+            const fileInput = document.getElementById('test-audio-file');
+            const resultDiv = document.getElementById('audio-test-result');
+            const errorDiv = document.getElementById('audio-test-error');
+            const filenameDiv = document.getElementById('audio-test-filename');
+            const infoSpan = document.getElementById('audio-test-info');
+            const player = document.getElementById('audio-test-player');
+            const downloadLink = document.getElementById('audio-test-download');
+            
+            // Reset UI
+            resultDiv.style.display = 'none';
+            errorDiv.style.display = 'none';
+            
+            if (!fileInput.files || !fileInput.files[0]) {
+                errorDiv.textContent = 'Wybierz plik audio do testu.';
+                errorDiv.style.display = 'block';
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('audio_file', fileInput.files[0]);
+            
+            try {
+                showToast('Przetwarzanie audio...', 'info');
+                
+                const response = await fetch('/settings/test-audio', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    errorDiv.textContent = 'Blad: ' + data.error;
+                    errorDiv.style.display = 'block';
+                    return;
+                }
+                
+                // Show result
+                const durationSec = (data.duration_ms / 1000).toFixed(1);
+                const preprocessed = data.preprocessed ? 'Tak' : 'Nie (preprocessing wylaczony)';
+                infoSpan.textContent = `Czas trwania: ${durationSec}s, Przetworzony: ${preprocessed}`;
+                
+                const audioUrl = '/settings/test-audio/' + data.file_id;
+                player.src = audioUrl;
+                downloadLink.href = audioUrl;
+                
+                resultDiv.style.display = 'block';
+                showToast('Audio przetworzone pomyslnie!', 'success');
+                
+            } catch (err) {
+                errorDiv.textContent = 'Blad polaczenia: ' + err.message;
+                errorDiv.style.display = 'block';
+            }
+        }
+        window.testAudioPreprocess = testAudioPreprocess;
     </script>
 </body>
 </html>

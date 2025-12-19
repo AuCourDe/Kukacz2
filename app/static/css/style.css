@@ -644,6 +644,23 @@ footer {
     border-top: 1px solid #eee;
 }
 
+/* Password change group */
+.password-change-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.password-change-group input {
+    width: 100%;
+}
+
+.password-strength,
+.password-match {
+    font-size: 0.85em;
+    margin-top: 2px;
+}
+
 /* Toast notifications */
 .toast-container {
     position: fixed;

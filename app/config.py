@@ -293,10 +293,15 @@ ENABLE_OLLAMA_ANALYSIS: bool = os.getenv("ENABLE_OLLAMA_ANALYSIS", "true").lower
 # Ustawienia audio preprocessora
 AUDIO_PREPROCESS_ENABLED: bool = os.getenv("AUDIO_PREPROCESS_ENABLED", "true").lower() == "true"
 AUDIO_PREPROCESS_NOISE_REDUCE: bool = os.getenv("AUDIO_PREPROCESS_NOISE_REDUCE", "true").lower() == "true"
+AUDIO_PREPROCESS_NOISE_STRENGTH: float = _env_float("AUDIO_PREPROCESS_NOISE_STRENGTH", 0.75)
 AUDIO_PREPROCESS_NORMALIZE: bool = os.getenv("AUDIO_PREPROCESS_NORMALIZE", "true").lower() == "true"
 AUDIO_PREPROCESS_GAIN_DB: float = _env_float("AUDIO_PREPROCESS_GAIN_DB", 1.5)
 AUDIO_PREPROCESS_COMPRESSOR: bool = os.getenv("AUDIO_PREPROCESS_COMPRESSOR", "true").lower() == "true"
+AUDIO_PREPROCESS_COMP_THRESHOLD: float = _env_float("AUDIO_PREPROCESS_COMP_THRESHOLD", -20.0)
+AUDIO_PREPROCESS_COMP_RATIO: float = _env_float("AUDIO_PREPROCESS_COMP_RATIO", 4.0)
+AUDIO_PREPROCESS_SPEAKER_LEVELING: bool = os.getenv("AUDIO_PREPROCESS_SPEAKER_LEVELING", "true").lower() == "true"
 AUDIO_PREPROCESS_EQ: bool = os.getenv("AUDIO_PREPROCESS_EQ", "true").lower() == "true"
+AUDIO_PREPROCESS_HIGHPASS: int = int(os.getenv("AUDIO_PREPROCESS_HIGHPASS", "100"))
 
 # Ustawienia przetwarzania równoległego
 # Domyślnie przetwarzamy jeden plik naraz (stabilne na CPU). Aby zwiększyć przepustowość
@@ -317,9 +322,12 @@ else:
 MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
 RETRY_DELAY_BASE: int = int(os.getenv("RETRY_DELAY_BASE", "2"))  # sekundy
 
-WHISPER_NO_SPEECH_THRESHOLD: float = _env_float("WHISPER_NO_SPEECH_THRESHOLD", 0.2)
-WHISPER_LOGPROB_THRESHOLD: Optional[float] = _env_optional_float("WHISPER_LOGPROB_THRESHOLD", None)
-WHISPER_CONDITION_ON_PREVIOUS_TEXT: bool = _env_bool("WHISPER_CONDITION_ON_PREVIOUS_TEXT", False)
+# Parametry Whisper dla obsługi długich pauz
+WHISPER_NO_SPEECH_THRESHOLD: float = _env_float("WHISPER_NO_SPEECH_THRESHOLD", 1.0)  # 1.0 = kontynuuje przez pauzy
+WHISPER_LOGPROB_THRESHOLD: float = _env_float("WHISPER_LOGPROB_THRESHOLD", -10.0)  # -10.0 = tolerancyjny dla pauz
+WHISPER_CONDITION_ON_PREVIOUS_TEXT: bool = _env_bool("WHISPER_CONDITION_ON_PREVIOUS_TEXT", False)  # False = bezpieczniej przy pauzach
+WHISPER_TEMPERATURE: float = _env_float("WHISPER_TEMPERATURE", 0.0)  # 0.0 = stabilne wyniki
+WHISPER_FP16: bool = _env_bool("WHISPER_FP16", True)  # True = szybsze na GPU
 WHISPER_SILENCE_HANDLING: str = os.getenv("WHISPER_SILENCE_HANDLING", "include")  # "include" lub "skip"
 
 # Tagi dla modeli myślących (thinking models)

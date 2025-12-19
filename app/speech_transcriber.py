@@ -25,6 +25,8 @@ from .config import (
     WHISPER_NO_SPEECH_THRESHOLD,
     WHISPER_LOGPROB_THRESHOLD,
     WHISPER_CONDITION_ON_PREVIOUS_TEXT,
+    WHISPER_TEMPERATURE,
+    WHISPER_FP16,
 )
 
 logger = logging.getLogger(__name__)
@@ -110,14 +112,16 @@ class WhisperTranscriber:
                     self.decrypt_file(encrypted_data, temp_path)
                     
                     # Transkrypcja z modelem large-v3 dla najwyższej dokładności
+                    # Parametry zoptymalizowane dla obsługi długich pauz w nagraniach
                     result = self.model.transcribe(
                         str(temp_path),
                         language="pl",  # Język polski
                         task="transcribe",
-                        fp16=self._fp16,
+                        fp16=self._fp16 and WHISPER_FP16,
                         no_speech_threshold=WHISPER_NO_SPEECH_THRESHOLD,
                         logprob_threshold=WHISPER_LOGPROB_THRESHOLD,
                         condition_on_previous_text=WHISPER_CONDITION_ON_PREVIOUS_TEXT,
+                        temperature=WHISPER_TEMPERATURE,
                     )
                     
                     # Usunięcie tymczasowego pliku

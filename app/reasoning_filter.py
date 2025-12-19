@@ -74,9 +74,27 @@ class ReasoningFilter:
             )
         
         # Usuwanie podwójnych spacji i pustych linii
-        filtered_text = re.sub(r'\n\s*\n', '\n\n', filtered_text)
-        filtered_text = filtered_text.strip()
-        
+        filtered_text = re.sub(r'\n\s*\n', '\n\n', filtered_text).strip()
+
+        # Jeśli po usunięciu rozumowania nie zostało nic, przywróć treść (bez tagów)
+        if not filtered_text and reasoning_sections:
+            reasoning_text = "\n\n".join(
+                section.get("content", "").strip()
+                for section in reasoning_sections
+                if section.get("content")
+            ).strip()
+            if reasoning_text:
+                filtered_text = (
+                    "[UWAGA] Cała odpowiedź modelu znajdowała się w sekcji rozumowania.\n"
+                    "Poniżej przywrócona treść (bez tagów):\n\n"
+                    f"{reasoning_text}"
+                )
+            else:
+                filtered_text = (
+                    "[UWAGA] Cała odpowiedź modelu znajdowała się w sekcji rozumowania, "
+                    "ale nie udało się odzyskać treści."
+                )
+
         logger.info(f"Przefiltrowano tekst - usunięto {len(reasoning_sections)} sekcji rozumowania")
         return filtered_text, reasoning_sections
     

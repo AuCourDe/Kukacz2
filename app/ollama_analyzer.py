@@ -15,6 +15,17 @@ import requests
 
 logger = logging.getLogger(__name__)
 
+
+def _load_system_prompt() -> str:
+    """Ładuje system prompt z pliku. Jeśli plik nie istnieje lub jest pusty, zwraca pusty string."""
+    from .config import PROMPT_DIR
+    system_prompt_file = PROMPT_DIR / "system_prompt.txt"
+    if system_prompt_file.exists():
+        content = system_prompt_file.read_text(encoding="utf-8").strip()
+        return content
+    return ""
+
+
 class OllamaAnalyzer:
     """Klasa do analizy treści za pomocą Ollama"""
     
@@ -169,7 +180,6 @@ class OllamaAnalyzer:
                 MAX_TRANSCRIPT_LENGTH,
                 OLLAMA_GENERATION_PARAMS,
                 OLLAMA_PROMPTS,
-                OLLAMA_SYSTEM_PROMPT,
                 PROMPT_INJECTION_PATTERNS,
             )
 
@@ -178,8 +188,11 @@ class OllamaAnalyzer:
                 sanitized_text, PROMPT_INJECTION_PATTERNS
             )
             request_id = uuid.uuid4().hex[:8].upper()
+            
+            # Wczytaj system prompt z pliku (może być pusty)
+            system_prompt = _load_system_prompt()
             prompt = self._build_secure_prompt(
-                sanitized_text, analysis_type, OLLAMA_PROMPTS, OLLAMA_SYSTEM_PROMPT
+                sanitized_text, analysis_type, OLLAMA_PROMPTS, system_prompt
             )
             payload_preview = self._get_payload_preview(prompt)
             
@@ -343,19 +356,18 @@ class OllamaAnalyzer:
             user_template = self._create_general_prompt("{text}")
 
         user_prompt = user_template.replace("{text}", sanitized_text)
-        return (
-            f"[SYSTEM]\n{system_prompt.strip()}\n[/SYSTEM]\n"
-            "[INPUT_JSON]\n"
-            "{\n"
-            f'  "analysis_type": "{analysis_type}",\n'
-            f'  "transcript": """{sanitized_text}"""\n'
-            "}\n"
-            "[/INPUT_JSON]\n"
-            "[USER]\n"
-            f"{user_prompt.strip()}\n"
-            "[/USER]\n"
-            "Odpowiedz jedynie poprawnym JSON. Wszystkie teksty w odpowiedzi muszą być w języku polskim."
-        )
+        
+        # Buduj prompt - dodaj system section tylko jeśli system_prompt nie jest pusty
+        if system_prompt and system_prompt.strip():
+            return (
+                f"[SYSTEM]\n{system_prompt.strip()}\n[/SYSTEM]\n"
+                "[USER]\n"
+                f"{user_prompt.strip()}\n"
+                "[/USER]"
+            )
+        else:
+            # Bez system prompt - tylko user prompt
+            return user_prompt.strip()
 
     @staticmethod
     def _sanitize_transcript(text: str, max_length: int) -> str:
@@ -517,7 +529,6 @@ Odpowiedź w formacie JSON:
             from .config import (
                 MAX_TRANSCRIPT_LENGTH,
                 OLLAMA_GENERATION_PARAMS,
-                OLLAMA_SYSTEM_PROMPT,
                 PROMPT_INJECTION_PATTERNS,
             )
 
@@ -530,14 +541,19 @@ Odpowiedź w formacie JSON:
             # Podstaw tekst do szablonu promptu
             user_prompt = prompt_template.replace("{text}", sanitized_text)
             
-            # Buduj bezpieczny prompt z system promptem
-            prompt = (
-                f"[SYSTEM]\n{OLLAMA_SYSTEM_PROMPT.strip()}\n[/SYSTEM]\n"
-                "[USER]\n"
-                f"{user_prompt.strip()}\n"
-                "[/USER]\n"
-                "Odpowiedz jedynie poprawnym JSON. Wszystkie teksty w odpowiedzi muszą być w języku polskim."
-            )
+            # Wczytaj system prompt z pliku (może być pusty)
+            system_prompt = _load_system_prompt()
+            
+            # Buduj prompt - dodaj system prompt tylko jeśli nie jest pusty
+            if system_prompt:
+                prompt = (
+                    f"[SYSTEM]\n{system_prompt.strip()}\n[/SYSTEM]\n"
+                    "[USER]\n"
+                    f"{user_prompt.strip()}\n"
+                    "[/USER]"
+                )
+            else:
+                prompt = user_prompt.strip()
             
             payload_preview = self._get_payload_preview(prompt)
             

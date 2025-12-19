@@ -37,6 +37,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Model Whisper do transkrypcji mowy",
         "alternatives": "small (szybsze na CPU), large-v3 (lepsza jakość, wolniejsze)",
         "category": "models",
+        "requires_restart": True,
     },
     "OLLAMA_MODEL": {
         "default": "gemma3:12b",
@@ -51,6 +52,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Adres bazowy serwera Ollama",
         "alternatives": "http://<remote-ip>:11434 (zdalny serwer)",
         "category": "models",
+        "requires_restart": True,
     },
     "SPEAKER_DIARIZATION_MODEL": {
         "default": "pyannote/speaker-diarization-3.1",
@@ -58,6 +60,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Model do segmentacji rozmów (rozpoznawanie mówców)",
         "alternatives": "pyannote/speaker-diarization-3.0 (starsza wersja)",
         "category": "models",
+        "requires_restart": True,
     },
     "SPEAKER_DIARIZATION_TOKEN": {
         "default": "",
@@ -65,6 +68,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Token Hugging Face dla pyannote.audio",
         "alternatives": "Puste = wyłącza pyannote",
         "category": "models",
+        "requires_restart": True,
     },
     "OLLAMA_THINKING_START_TAG": {
         "default": "",
@@ -192,8 +196,18 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "AUDIO_PREPROCESS_NOISE_REDUCE": {
         "default": "true",
         "type": "boolean",
-        "description": "Włącz odszumianie audio",
+        "description": "Włącz redukcję szumu tła",
         "alternatives": "false (wyłącza odszumianie)",
+        "category": "audio",
+    },
+    "AUDIO_PREPROCESS_NOISE_STRENGTH": {
+        "default": "0.75",
+        "type": "number",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "description": "Siła redukcji szumu (0.0-1.0). Wyższa = silniejsze odszumianie ale może zniekształcać głos.",
+        "alternatives": "0.5 (delikatne), 0.9 (agresywne)",
         "category": "audio",
     },
     "AUDIO_PREPROCESS_NORMALIZE": {
@@ -207,17 +221,44 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "default": "1.5",
         "type": "number",
         "min": 0.0,
-        "max": 10.0,
+        "max": 20.0,
         "step": 0.5,
         "description": "Wzmocnienie głośności (dB)",
-        "alternatives": "0.0 (bez wzmocnienia), 3.0 (silniejsze)",
+        "alternatives": "0.0 (bez wzmocnienia), 6.0 (silniejsze)",
         "category": "audio",
     },
     "AUDIO_PREPROCESS_COMPRESSOR": {
         "default": "true",
         "type": "boolean",
-        "description": "Włącz kompresor dynamiki",
+        "description": "Włącz kompresor dynamiki (wyrównuje głośność cichych i głośnych fragmentów)",
         "alternatives": "false (wyłącza kompresor)",
+        "category": "audio",
+    },
+    "AUDIO_PREPROCESS_COMP_THRESHOLD": {
+        "default": "-20.0",
+        "type": "number",
+        "min": -40.0,
+        "max": 0.0,
+        "step": 1.0,
+        "description": "Próg kompresora (dB). Niższy = więcej kompresji. -20dB dla rozmów, -30dB dla cichych nagrań.",
+        "alternatives": "-10 (delikatny), -30 (agresywny)",
+        "category": "audio",
+    },
+    "AUDIO_PREPROCESS_COMP_RATIO": {
+        "default": "4.0",
+        "type": "number",
+        "min": 1.0,
+        "max": 20.0,
+        "step": 0.5,
+        "description": "Współczynnik kompresji (np. 4:1). Wyższy = silniejsze wyrównanie głośności.",
+        "alternatives": "2:1 (delikatny), 8:1 (mocny), 20:1 (limiter)",
+        "category": "audio",
+    },
+    "AUDIO_PREPROCESS_SPEAKER_LEVELING": {
+        "default": "true",
+        "type": "boolean",
+        "description": "Wyrównywanie głośności mówców - automatycznie podnosi cichych i obniża głośnych mówców.",
+        "alternatives": "false (bez wyrównania)",
         "category": "audio",
     },
     "AUDIO_PREPROCESS_EQ": {
@@ -227,32 +268,62 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "alternatives": "false (wyłącza EQ)",
         "category": "audio",
     },
+    "AUDIO_PREPROCESS_HIGHPASS": {
+        "default": "100",
+        "type": "number",
+        "min": 50,
+        "max": 300,
+        "step": 10,
+        "description": "Filtr górnoprzepustowy (Hz) - usuwa niskie szumy. 80-100Hz dla naturalnego głosu, 200Hz dla telefonu.",
+        "alternatives": "80 (naturalny), 200 (telefon)",
+        "category": "audio",
+    },
     
     # ============================================
     # KATEGORIA: Parametry Whisper
     # ============================================
     "WHISPER_NO_SPEECH_THRESHOLD": {
-        "default": "0.2",
+        "default": "1.0",
         "type": "number",
         "min": 0.0,
         "max": 1.0,
         "step": 0.05,
-        "description": "Próg wykrywania ciszy - określa jak agresywnie system pomija fragmenty bez mowy. Niższa wartość (np. 0.1) = system kontynuuje transkrypcję nawet przy długich przerwach. Wyższa wartość (np. 0.6) = szybsze przetwarzanie, ale może pomijać ciche fragmenty.",
-        "alternatives": "0.1 (pełna transkrypcja z ciszami), 0.6 (domyślny Whisper)",
+        "description": "Próg wykrywania ciszy. WYŻSZA wartość (1.0) = kontynuuje transkrypcję przez długie pauzy (zalecane dla call center). NIŻSZA wartość (0.1-0.6) = może przerywać przy dłuższych ciszach.",
+        "alternatives": "1.0 (pełna transkrypcja z pauzami), 0.6 (domyślny Whisper), 0.1 (agresywne pomijanie ciszy)",
         "category": "whisper",
     },
     "WHISPER_LOGPROB_THRESHOLD": {
-        "default": "none",
-        "type": "text",
-        "description": "Próg log-prawdopodobieństwa - filtruje segmenty o niskiej pewności rozpoznania. Wartość 'none' wyłącza filtrowanie (zalecane dla rozmów z szumem). Wartość -1.0 filtruje niewyraźne fragmenty.",
-        "alternatives": "-1.0 (filtruj niepewne), none (bez filtrowania)",
+        "default": "-10.0",
+        "type": "number",
+        "min": -20.0,
+        "max": 0.0,
+        "step": 0.5,
+        "description": "Próg log-prawdopodobieństwa. Niższa wartość (-10.0) = akceptuje segmenty o niższej pewności (lepsze dla nagrań z szumem/pauzami). Wyższa (-1.0) = filtruje niepewne fragmenty.",
+        "alternatives": "-10.0 (tolerancyjny dla pauz), -1.0 (standardowy), none (wyłączony)",
         "category": "whisper",
     },
     "WHISPER_CONDITION_ON_PREVIOUS_TEXT": {
         "default": "false",
         "type": "boolean",
-        "description": "Jeśli włączone, Whisper używa poprzedniego tekstu jako kontekstu. Może poprawić spójność długich rozmów, ale też powodować 'halucynacje' (powtarzanie tekstu).",
-        "alternatives": "true (więcej kontekstu), false (bezpieczniej)",
+        "description": "Jeśli włączone, Whisper używa poprzedniego tekstu jako kontekstu. WYŁĄCZ (false) przy długich pauzach - zapobiega 'halucynacjom' (powtarzaniu tekstu).",
+        "alternatives": "false (bezpieczniej przy pauzach), true (więcej kontekstu)",
+        "category": "whisper",
+    },
+    "WHISPER_TEMPERATURE": {
+        "default": "0.0",
+        "type": "number",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.1,
+        "description": "Temperatura próbkowania (0.0-1.0). NIŻSZA (0.0) = bardziej deterministyczne, stabilne wyniki. WYŻSZA = więcej wariantów, może pomóc przy niejasnym audio.",
+        "alternatives": "0.0 (stabilne), 0.2 (trochę kreatywności), 0.5 (więcej wariantów)",
+        "category": "whisper",
+    },
+    "WHISPER_FP16": {
+        "default": "true",
+        "type": "boolean",
+        "description": "Użyj FP16 (half precision) na GPU. TRUE = szybsze na GPU z CUDA. FALSE = bardziej stabilne, wymagane na CPU lub starszych GPU.",
+        "alternatives": "true (szybsze GPU), false (stabilniejsze/CPU)",
         "category": "whisper",
     },
     "WHISPER_SILENCE_HANDLING": {
@@ -337,6 +408,27 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "alternatives": "true (dla batch processing)",
         "category": "features",
     },
+    "FILE_RETENTION_DAYS": {
+        "default": "90",
+        "type": "number",
+        "description": "Retencja plików w dniach (0 = bez limitu)",
+        "alternatives": "30 (miesiąc), 365 (rok), 0 (bez usuwania)",
+        "category": "features",
+    },
+    "ENABLE_FILE_ENCRYPTION": {
+        "default": "true",
+        "type": "boolean",
+        "description": "Szyfruj pliki tymczasowe podczas przetwarzania",
+        "alternatives": "false (bez szyfrowania)",
+        "category": "features",
+    },
+    "TEMPORARY_FILE_CLEANUP": {
+        "default": "true",
+        "type": "boolean",
+        "description": "Automatycznie usuwaj pliki tymczasowe po przetworzeniu",
+        "alternatives": "false (zostawia do debugowania)",
+        "category": "features",
+    },
     
     # ============================================
     # KATEGORIA: Logowanie
@@ -344,9 +436,9 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     "LOG_LEVEL": {
         "default": "INFO",
         "type": "select",
-        "options": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        "description": "Poziom szczegółowości logów",
-        "alternatives": "DEBUG (więcej), WARNING (mniej)",
+        "options": ["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL", "DISABLED"],
+        "description": "Poziom szczegółowości logów (DISABLED = wyłączone)",
+        "alternatives": "DEBUG (więcej), WARNING (mniej), DISABLED (bez logów)",
         "category": "logging",
     },
     "LOG_FILE": {
@@ -404,6 +496,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Host interfejsu webowego",
         "alternatives": "127.0.0.1 (tylko lokalnie)",
         "category": "web",
+        "requires_restart": True,
     },
     "WEB_PORT": {
         "default": "8080",
@@ -414,6 +507,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Port interfejsu webowego",
         "alternatives": "5000 (Flask domyślny), 443 (HTTPS)",
         "category": "web",
+        "requires_restart": True,
     },
     "WEB_LOGIN": {
         "default": "admin",
@@ -424,10 +518,11 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     },
     "WEB_PASSWORD": {
         "default": "admin",
-        "type": "password",
-        "description": "Hasło do panelu webowego",
-        "alternatives": "Silne hasło",
+        "type": "password_change",
+        "description": "Hasło logowania do aplikacji (8-12 znaków, wielka i mała litera, cyfra, znak specjalny)",
+        "alternatives": "Wpisz nowe hasło i potwierdź - pozostaw puste aby nie zmieniać",
         "category": "web",
+        "gui_validation": True,
     },
     "WEB_SECRET_KEY": {
         "default": "change_me",
@@ -435,19 +530,9 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Klucz sesji Flask (min. 32 znaki)",
         "alternatives": "Wygeneruj: python -c \"import secrets; print(secrets.token_urlsafe(32))\"",
         "category": "web",
+        "requires_restart": True,
     },
-    
-    # ============================================
-    # KATEGORIA: Hasło do ustawień (nie edytowalne z GUI)
-    # ============================================
-    "SETTINGS_PASSWORD": {
-        "default": "admin123",
-        "type": "password",
-        "description": "Hasło dostępu do ustawień (zmiana tylko w pliku .env)",
-        "alternatives": "Silne hasło",
-        "category": "security",
-        "readonly": True,
-    },
+    # UWAGA: SETTINGS_PASSWORD nie jest tutaj - można go zmienić TYLKO przez edycję pliku .env
 }
 
 # Definicje kategorii (zakładek)
@@ -487,11 +572,6 @@ SETTINGS_CATEGORIES = {
         "icon": "",
         "description": "Ustawienia logowania i ponawiania operacji",
     },
-    "security": {
-        "name": "Bezpieczeństwo",
-        "icon": "",
-        "description": "Ustawienia szyfrowania i bezpieczeństwa",
-    },
     "web": {
         "name": "Interfejs",
         "icon": "",
@@ -505,7 +585,25 @@ class SettingsManager:
 
     def __init__(self, env_path: Optional[Path] = None):
         self.env_path = env_path or ENV_FILE_PATH
+        self._ensure_env_file_exists()
         logger.info(f"SettingsManager zainicjalizowany - plik: {self.env_path}")
+
+    def _ensure_env_file_exists(self) -> None:
+        """Tworzy plik .env z env.example jeśli nie istnieje."""
+        if self.env_path.exists():
+            return
+        
+        # Szukaj env.example w tym samym katalogu co .env
+        example_path = self.env_path.parent / "env.example"
+        
+        if example_path.exists():
+            import shutil
+            shutil.copy(example_path, self.env_path)
+            logger.info(f"Utworzono plik .env z {example_path}")
+        else:
+            # Utwórz pusty plik .env z domyślnymi wartościami
+            logger.warning(f"Brak pliku env.example - tworzę pusty .env")
+            self.env_path.touch()
 
     def get_all_settings(self) -> Dict[str, Dict[str, Any]]:
         """Pobiera wszystkie ustawienia z ich aktualnymi wartościami."""

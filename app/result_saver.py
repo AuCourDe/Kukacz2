@@ -346,6 +346,15 @@ class ResultSaver:
                         if display_result:
                             formatted = json.dumps(display_result, ensure_ascii=False, indent=2)
                             lines.append(formatted)
+                        elif raw_response:
+                            # Jeśli po usunięciu kluczy technicznych nic nie zostało,
+                            # wyświetl surową odpowiedź (np. gdy model nie zwrócił JSON)
+                            lines.append(raw_response)
+                        elif "raw_analysis" in parsed_result:
+                            # Fallback: wyświetl zawartość raw_analysis
+                            lines.append(parsed_result["raw_analysis"])
+                        else:
+                            lines.append("(brak danych)")
                     except Exception:
                         lines.append(str(parsed_result))
                 elif raw_response:

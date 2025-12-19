@@ -17,8 +17,16 @@ import tempfile
 from pathlib import Path
 from typing import Optional, Dict, Any
 import torch
+import torch.serialization
 import whisper
 from cryptography.fernet import Fernet
+
+# Workaround for PyTorch 2.6+ weights_only=True default
+# See: https://pytorch.org/docs/stable/generated/torch.load.html
+try:
+    torch.serialization.add_safe_globals([torch.torch_version.TorchVersion])
+except (AttributeError, TypeError):
+    pass  # Older PyTorch versions don't need this
 
 from .config import (
     MODEL_CACHE_DIR,

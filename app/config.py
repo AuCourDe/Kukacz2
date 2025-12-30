@@ -38,8 +38,8 @@ if load_dotenv:
 # Token autoryzacji dla pyannote.audio (rozpoznawanie mówców)
 SPEAKER_DIARIZATION_TOKEN: str = os.getenv("SPEAKER_DIARIZATION_TOKEN", "")
 
-# Model do segmentacji rozmów (speaker diarization)
-SPEAKER_DIARIZATION_MODEL: str = os.getenv("SPEAKER_DIARIZATION_MODEL", "pyannote/speaker-diarization-3.1")
+# Model do segmentacji rozmów (speaker diarization) – stała, bez możliwości konfiguracji
+SPEAKER_DIARIZATION_MODEL: str = "pyannote/speaker-diarization-3.1"
 
 # Model Whisper do transkrypcji
 WHISPER_MODEL: str = os.getenv("WHISPER_MODEL", "base")
@@ -291,6 +291,7 @@ ENABLE_SPEAKER_DIARIZATION: bool = os.getenv("ENABLE_SPEAKER_DIARIZATION", "true
 ENABLE_OLLAMA_ANALYSIS: bool = os.getenv("ENABLE_OLLAMA_ANALYSIS", "true").lower() == "true"
 
 # Ustawienia audio preprocessora
+AUDIO_FORCE_ORIGINAL: bool = os.getenv("AUDIO_FORCE_ORIGINAL", "false").lower() == "true"
 AUDIO_PREPROCESS_ENABLED: bool = os.getenv("AUDIO_PREPROCESS_ENABLED", "true").lower() == "true"
 AUDIO_PREPROCESS_NOISE_REDUCE: bool = os.getenv("AUDIO_PREPROCESS_NOISE_REDUCE", "true").lower() == "true"
 AUDIO_PREPROCESS_NOISE_STRENGTH: float = _env_float("AUDIO_PREPROCESS_NOISE_STRENGTH", 0.75)

@@ -54,14 +54,6 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "category": "models",
         "requires_restart": True,
     },
-    "SPEAKER_DIARIZATION_MODEL": {
-        "default": "pyannote/speaker-diarization-3.1",
-        "type": "text",
-        "description": "Model do segmentacji rozmów (rozpoznawanie mówców)",
-        "alternatives": "pyannote/speaker-diarization-3.0 (starsza wersja)",
-        "category": "models",
-        "requires_restart": True,
-    },
     "SPEAKER_DIARIZATION_TOKEN": {
         "default": "",
         "type": "password",
@@ -184,8 +176,76 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
     },
     
     # ============================================
+    # KATEGORIA: Czat
+    # ============================================
+    "CHAT_OLLAMA_MODEL": {
+        "default": "gemma3:12b",
+        "type": "text",
+        "description": "Model Ollama dla zakładki czatu",
+        "alternatives": "gemma3:8b (szybsze), qwen3:8b (alternatywny)",
+        "category": "chat",
+    },
+    "CHAT_OLLAMA_TEMPERATURE": {
+        "default": "0.7",
+        "type": "number",
+        "min": 0.0,
+        "max": 2.0,
+        "step": 0.1,
+        "description": "Temperatura generowania dla czatu",
+        "alternatives": "0.3 (deterministyczne), 1.0 (kreatywne)",
+        "category": "chat",
+    },
+    "CHAT_OLLAMA_TOP_P": {
+        "default": "0.9",
+        "type": "number",
+        "min": 0.0,
+        "max": 1.0,
+        "step": 0.05,
+        "description": "Top-p dla czatu",
+        "alternatives": "0.8 (konserwatywne), 1.0 (pełna dystrybucja)",
+        "category": "chat",
+    },
+    "CHAT_OLLAMA_TOP_K": {
+        "default": "40",
+        "type": "number",
+        "min": 1,
+        "max": 100,
+        "step": 1,
+        "description": "Top-k dla czatu",
+        "alternatives": "20 (szybciej), 80 (większa różnorodność)",
+        "category": "chat",
+    },
+    "CHAT_OLLAMA_NUM_CTX": {
+        "default": "2048",
+        "type": "number",
+        "min": 512,
+        "max": 8192,
+        "step": 256,
+        "description": "Rozmiar kontekstu dla czatu",
+        "alternatives": "1024 (mniejszy), 4096 (większy)",
+        "category": "chat",
+    },
+    "CHAT_OLLAMA_NUM_PREDICT": {
+        "default": "512",
+        "type": "number",
+        "min": 64,
+        "max": 2048,
+        "step": 64,
+        "description": "Maksymalna liczba tokenów w odpowiedzi czatu",
+        "alternatives": "256 (krótsze), 1024 (dłuższe)",
+        "category": "chat",
+    },
+    
+    # ============================================
     # KATEGORIA: Preprocessing Audio
     # ============================================
+    "AUDIO_FORCE_ORIGINAL": {
+        "default": "false",
+        "type": "boolean",
+        "description": "Przepuszczaj oryginalne audio (bez jakichkolwiek modyfikacji)",
+        "alternatives": "true (pomija wszystkie etapy preprocessingu)",
+        "category": "audio",
+    },
     "AUDIO_PREPROCESS_ENABLED": {
         "default": "true",
         "type": "boolean",
@@ -530,9 +590,7 @@ SETTINGS_DEFINITIONS: Dict[str, Dict[str, Any]] = {
         "description": "Klucz sesji Flask (min. 32 znaki)",
         "alternatives": "Wygeneruj: python -c \"import secrets; print(secrets.token_urlsafe(32))\"",
         "category": "web",
-        "requires_restart": True,
     },
-    # UWAGA: SETTINGS_PASSWORD nie jest tutaj - można go zmienić TYLKO przez edycję pliku .env
 }
 
 # Definicje kategorii (zakładek)
@@ -576,6 +634,16 @@ SETTINGS_CATEGORIES = {
         "name": "Interfejs",
         "icon": "",
         "description": "Ustawienia serwera webowego i autoryzacji",
+    },
+    "chat": {
+        "name": "Czat",
+        "icon": "",
+        "description": "Ustawienia zakładki czatu i parametrów modelu",
+    },
+    "prompt_status": {
+        "name": "Prompt statusu",
+        "icon": "",
+        "description": "Ustawienia promptu statusu wyświetlającego dodatkowe informacje w oknie przetwarzania",
     },
 }
 

@@ -14,27 +14,28 @@ import logging
 import os
 from pathlib import Path
 from typing import List, Optional, Dict, Tuple
-import torch
-import numpy as np
-from collections import defaultdict
 import functools
 
-# Funkcja pomocnicza do patchowania torch.load
-def _apply_torch_load_patch():
-    """Wymusza weights_only=False dla kompatybilności z checkpointami pyannote."""
-    import torch
-    if hasattr(torch, '_original_load'):
-        return  # Patch już zastosowany
-    
-    torch._original_load = torch.load
-    
-    @functools.wraps(torch._original_load)
-    def _patched_torch_load(*args, **kwargs):
-        if 'weights_only' not in kwargs:
-            kwargs['weights_only'] = False
-        return torch._original_load(*args, **kwargs)
-    
-    torch.load = _patched_torch_load
+# KRYTYCZNE: Patch dla torch.load PRZED importem torch przez inne moduły
+# Naprawia błąd "persistent id instruction" w PyTorch 2.x
+import torch
+import torch.serialization
+
+_original_torch_load = torch.load
+
+@functools.wraps(_original_torch_load)
+def _patched_torch_load(*args, **kwargs):
+    # Wymuszenie weights_only=False dla kompatybilności z pyannote
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+
+# Zastosowanie patcha globalnie
+torch.load = _patched_torch_load
+torch.serialization.load = _patched_torch_load
+
+import numpy as np
+from collections import defaultdict
 
 # Monkey-patch dla kompatybilności z nowszymi wersjami huggingface_hub
 # PyAnnote używa use_auth_token, ale nowsze wersje używają token
@@ -130,9 +131,7 @@ class SpeakerDiarizer:
                         logger.warning(f"Nie udało się zalogować do HuggingFace Hub: {login_error}")
                 
                 # Pipeline.from_pretrained automatycznie użyje tokenu z zmiennej środowiskowej lub z logowania
-                # Zastosowanie monkey-patch dla torch.load (naprawia błąd "persistent id instruction")
-                _apply_torch_load_patch()
-                
+                # Monkey-patch dla torch.load został zastosowany na początku modułu
                 self.pipeline = Pipeline.from_pretrained(
                     model_name,
                     cache_dir=str(pyannote_cache_dir)

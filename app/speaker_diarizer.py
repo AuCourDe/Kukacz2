@@ -17,13 +17,30 @@ from typing import List, Optional, Dict, Tuple
 import torch
 import numpy as np
 from collections import defaultdict
+import functools
+
+# Funkcja pomocnicza do patchowania torch.load
+def _apply_torch_load_patch():
+    """Wymusza weights_only=False dla kompatybilności z checkpointami pyannote."""
+    import torch
+    if hasattr(torch, '_original_load'):
+        return  # Patch już zastosowany
+    
+    torch._original_load = torch.load
+    
+    @functools.wraps(torch._original_load)
+    def _patched_torch_load(*args, **kwargs):
+        if 'weights_only' not in kwargs:
+            kwargs['weights_only'] = False
+        return torch._original_load(*args, **kwargs)
+    
+    torch.load = _patched_torch_load
 
 # Monkey-patch dla kompatybilności z nowszymi wersjami huggingface_hub
 # PyAnnote używa use_auth_token, ale nowsze wersje używają token
 try:
     import huggingface_hub.file_download
     original_hf_hub_download = huggingface_hub.file_download.hf_hub_download
-    import functools
     
     @functools.wraps(original_hf_hub_download)
     def patched_hf_hub_download(*args, **kwargs):
@@ -113,7 +130,9 @@ class SpeakerDiarizer:
                         logger.warning(f"Nie udało się zalogować do HuggingFace Hub: {login_error}")
                 
                 # Pipeline.from_pretrained automatycznie użyje tokenu z zmiennej środowiskowej lub z logowania
-                # Monkey-patch został już zastosowany na początku modułu
+                # Zastosowanie monkey-patch dla torch.load (naprawia błąd "persistent id instruction")
+                _apply_torch_load_patch()
+                
                 self.pipeline = Pipeline.from_pretrained(
                     model_name,
                     cache_dir=str(pyannote_cache_dir)

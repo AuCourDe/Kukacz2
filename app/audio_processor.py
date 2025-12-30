@@ -31,6 +31,8 @@ from .content_analyzer import ContentAnalyzer
 from .result_saver import ResultSaver
 from .processing_queue import ProcessingQueue
 from .audio_preprocessor import AudioPreprocessor
+from .config import PROMPT_DIR, OLLAMA_BASE_URL, OLLAMA_MODEL
+from .ollama_analyzer import OllamaAnalyzer
 
 logger = logging.getLogger(__name__)
 
@@ -140,7 +142,14 @@ class AudioProcessor:
             logger.error(f"Błąd podczas transkrypcji z mówcami: {e}")
             return None
     
-    def process_audio_file(self, audio_file_path: Path, queue_item_id: Optional[str] = None, enable_preprocessing: bool = True) -> dict:
+    def process_audio_file(
+        self,
+        audio_file_path: Path,
+        queue_item_id: Optional[str] = None,
+        enable_preprocessing: bool = True,
+        preprocess_requested: bool = True,
+        preprocess_reason: Optional[str] = None,
+    ) -> dict:
         """Przetwarzanie pojedynczego pliku audio z pełnym pipeline"""
         with self.semaphore:  # Ograniczenie liczby równoczesnych przetwarzań
             result_summary: dict = {
@@ -149,6 +158,9 @@ class AudioProcessor:
                 "analysis_file": None,
                 "processed_audio": None,
                 "timestamp": None,
+                "preprocess_requested": preprocess_requested,
+                "preprocess_applied": False,
+                "preprocess_reason": preprocess_reason,
             }
             if self.processing_queue and queue_item_id:
                 self.processing_queue.mark_processing(queue_item_id)
@@ -160,12 +172,18 @@ class AudioProcessor:
                 processed_file_path = None
                 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
                 
-                if enable_preprocessing and self.audio_preprocessor.enabled:
+                preprocessing_possible = enable_preprocessing and self.audio_preprocessor.enabled
+                if enable_preprocessing and not self.audio_preprocessor.enabled:
+                    logger.warning("Preprocessing włączony, ale preprocessor nieaktywny – pomijam")
+                    if not result_summary.get("preprocess_reason"):
+                        result_summary["preprocess_reason"] = "preprocessor_unavailable"
+                if preprocessing_possible:
                     logger.info("Wstępne przetwarzanie audio...")
                     temp_processed = self.audio_preprocessor.process(audio_file_path)
                     if temp_processed and temp_processed != audio_file_path:
                         processed_file_path = temp_processed
                         audio_file_path = temp_processed  # Używamy przetworzonego pliku do transkrypcji
+                        result_summary["preprocess_applied"] = True
                         logger.info(f"Audio przetworzone: {processed_file_path.name}")
                 
                 # Kopiowanie oryginalnego pliku do processed
@@ -185,6 +203,15 @@ class AudioProcessor:
                         logger.info(f"Analiza Ollama zakończona dla: {audio_file_path.name}")
                     else:
                         logger.info(f"Analiza Ollama wyłączona, pominięto analizę treści.")
+                    
+                    # Uruchomienie promptu statusu (jeśli istnieje)
+                    status_result = self.run_status_prompt(transcription_data, analysis_results)
+                    if status_result:
+                        # Dodaj wynik statusu do analizy
+                        if analysis_results:
+                            analysis_results["status_check"] = status_result
+                        else:
+                            analysis_results = {"status_check": status_result}
                     
                     # Zapisanie wyników (używamy oryginalnej nazwy pliku)
                     self.result_saver.save_transcription_with_speakers(
@@ -235,6 +262,7 @@ class AudioProcessor:
                         self.processing_queue.mark_completed(
                             queue_item_id,
                             result_files,
+                            status_check=status_result,
                         )
                 else:
                     logger.error(f"Nie udało się przetworzyć pliku: {audio_file_path.name}")
@@ -298,4 +326,125 @@ class AudioProcessor:
     
     def stop_file_watcher(self) -> None:
         """Zatrzymanie obserwatora folderu"""
-        self.file_watcher.stop_watching() 
+        self.file_watcher.stop_watching()
+    
+    def run_status_prompt(self, transcription_data: dict, analysis_results: Optional[dict]) -> Optional[dict]:
+        """Uruchamia prompt statusu i zwraca wynik."""
+        try:
+            # Sprawdź czy istnieje plik promptu statusu
+            status_prompt_file = PROMPT_DIR / "status_prompt.txt"
+            if not status_prompt_file.exists():
+                return None
+            
+            # Wczytaj zawartość promptu
+            content = status_prompt_file.read_text(encoding="utf-8").strip()
+            if not content:
+                return None
+            
+            # Parsuj prompt na sekcje
+            sections = self._parse_status_prompt_content(content)
+            requirement = sections.get("requirement", "")
+            statuses = sections.get("statuses", "")
+            instruction = sections.get("instruction", "")
+            
+            if not requirement and not statuses and not instruction:
+                return None
+            
+            # Przygotuj kontekst
+            context_parts = []
+            
+            # Dodaj transkrypcję
+            if transcription_data and "text" in transcription_data:
+                context_parts.append(f"Transkrypcja:\n{transcription_data['text']}")
+            
+            # Dodaj analizę
+            if analysis_results:
+                # Konwertuj analizę do tekstu
+                analysis_text = self._format_analysis_results(analysis_results)
+                context_parts.append(f"Analiza:\n{analysis_text}")
+            
+            context = "\n\n".join(context_parts)
+            
+            # Zbuduj prompt
+            prompt = self._build_status_prompt(requirement, statuses, instruction, context)
+            
+            # Wywołaj Ollama
+            ollama = OllamaAnalyzer(base_url=OLLAMA_BASE_URL, model=OLLAMA_MODEL)
+            response = ollama.analyze_content(prompt, "custom")
+            
+            if response["success"]:
+                # Parsuj wynik
+                result_text = response["raw_response"].strip()
+                parsed_result = self._parse_status_result(result_text)
+                return parsed_result
+            else:
+                logger.warning(f"Błąd podczas wykonywania promptu statusu: {response.get('error', 'Nieznany błąd')}")
+                return {"status": "BŁĄD PRZETWARZANIA", "description": "Błąd analizy", "color": "czerwony"}
+                
+        except Exception as e:
+            logger.error(f"Błąd podczas wykonywania promptu statusu: {e}")
+            return {"status": "BŁĄD PRZETWARZANIA", "description": "Błąd systemu", "color": "czerwony"}
+    
+    def _parse_status_prompt_content(self, content: str) -> dict:
+        """Parsuje zawartość promptu statusu na sekcje."""
+        sections = {"requirement": "", "statuses": "", "instruction": ""}
+        parts = content.split("\n\n===\n\n")
+        if len(parts) >= 1:
+            sections["requirement"] = parts[0].strip()
+        if len(parts) >= 2:
+            sections["statuses"] = parts[1].strip()
+        if len(parts) >= 3:
+            sections["instruction"] = parts[2].strip()
+        return sections
+    
+    def _format_analysis_results(self, analysis_results: dict) -> str:
+        """Formatuje wyniki analizy do tekstu."""
+        if not analysis_results:
+            return ""
+        
+        lines = []
+        for key, value in analysis_results.items():
+            if key != "status_check":  # Pomijamy wynik statusu
+                lines.append(f"{key}: {value}")
+        
+        return "\n".join(lines)
+    
+    def _build_status_prompt(self, requirement: str, statuses: str, instruction: str, context: str) -> str:
+        """Buduje prompt dla statusu."""
+        prompt_parts = [
+            "Jesteś ekspertem analizującym rozmowy telefoniczne. Odpowiadasz tylko w języku polskim.",
+            f"WYMAGANIE WOBEC STATUSU:\n{requirement}",
+            f"DOSTĘPNE STATUSY:\n{statuses}",
+            f"INSTRUKCJA OLLAMA:\n{instruction}",
+            f"KONTEKST:\n{context}",
+            "Odpowiedz tylko jedną linią w formacie: NAZWA_STATUSU: OPIS:kolor",
+            "Jeśli nie możesz określić statusu, odpowiedz: BŁĄD PRZETWARZANIA: Nie można określić statusu:czerwony"
+        ]
+        
+        return "\n\n".join(prompt_parts)
+    
+    def _parse_status_result(self, result_text: str) -> dict:
+        """Parsuje wynik statusu."""
+        try:
+            # Usuń białe znaki
+            result_text = result_text.strip()
+            
+            # Sprawdź czy to błąd
+            if "BŁĄD PRZETWARZANIA" in result_text:
+                return {"status": "BŁĄD PRZETWARZANIA", "description": "Błąd analizy", "color": "czerwony"}
+            
+            # Parsuj format: NAZWA_STATUSU: OPIS:kolor
+            if ":" in result_text:
+                parts = result_text.split(":", 2)
+                if len(parts) >= 3:
+                    status_name = parts[0].strip()
+                    description = parts[1].strip()
+                    color = parts[2].strip()
+                    return {"status": status_name, "description": description, "color": color}
+            
+            # Fallback
+            return {"status": "BŁĄD PRZETWARZANIA", "description": "Nieprawidłowy format odpowiedzi", "color": "czerwony"}
+            
+        except Exception as e:
+            logger.error(f"Błąd parsowania wyniku statusu: {e}")
+            return {"status": "BŁĄD PRZETWARZANIA", "description": "Błąd parsowania", "color": "czerwony"}

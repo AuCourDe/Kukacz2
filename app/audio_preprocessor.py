@@ -33,6 +33,7 @@ except ImportError:
     logging.warning("noisereduce/librosa nie jest dostępne. Odszumianie będzie wyłączone.")
 
 from .config import (
+    AUDIO_FORCE_ORIGINAL,
     AUDIO_PREPROCESS_ENABLED,
     AUDIO_PREPROCESS_NOISE_REDUCE,
     AUDIO_PREPROCESS_NOISE_STRENGTH,
@@ -66,7 +67,7 @@ class AudioPreprocessor:
         eq: bool = True,
         highpass: int = 100,
     ):
-        self.enabled = enabled and PYDUB_AVAILABLE
+        self.enabled = enabled and PYDUB_AVAILABLE and not AUDIO_FORCE_ORIGINAL
         self.noise_reduce = noise_reduce and NOISE_REDUCE_AVAILABLE
         self.noise_strength = max(0.0, min(1.0, noise_strength))
         self.normalize = normalize
@@ -81,7 +82,8 @@ class AudioPreprocessor:
         if not PYDUB_AVAILABLE:
             logger.warning("AudioPreprocessor: pydub nie jest dostępne. Preprocessing wyłączony.")
         elif not self.enabled:
-            logger.info("AudioPreprocessor: preprocessing wyłączony przez konfigurację")
+            reason = "globalnego ustawienia" if AUDIO_FORCE_ORIGINAL else "konfiguracji"
+            logger.info("AudioPreprocessor: preprocessing wyłączony przez %s", reason)
         else:
             logger.info(f"AudioPreprocessor zainicjalizowany (noise={self.noise_reduce}/{self.noise_strength:.0%}, normalize={self.normalize}, gain={self.gain_db}dB, comp={self.compressor}/{self.comp_threshold}dB/{self.comp_ratio}:1, leveling={self.speaker_leveling})")
     

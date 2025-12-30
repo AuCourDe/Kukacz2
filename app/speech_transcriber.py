@@ -28,15 +28,13 @@ def _patch_torch_load_for_whisper():
     _original_torch_load = torch.load
     
     def _patched_load(*args, **kwargs):
-        try:
-            return _original_torch_load(*args, **kwargs)
-        except Exception as e:
-            error_msg = str(e)
-            # If weights_only causes the error, retry with weights_only=False
-            if "weights_only" in error_msg or "WeightsUnpickler" in error_msg:
-                kwargs["weights_only"] = False
-                return _original_torch_load(*args, **kwargs)
-            raise
+        # Check if weights_only would cause issues - force False for whisper compatibility
+        if kwargs.get("weights_only", None) is True:
+            # Reset file position if it's a file-like object
+            if args and hasattr(args[0], 'seek'):
+                args[0].seek(0)
+            kwargs["weights_only"] = False
+        return _original_torch_load(*args, **kwargs)
     
     torch.load = _patched_load
 

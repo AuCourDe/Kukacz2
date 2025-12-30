@@ -34,96 +34,206 @@
         </header>
 
         <main>
-            <!-- Upload section -->
-            <section class="card">
-                <h2>Dodaj pliki audio</h2>
-                <p style="margin-bottom: 15px; color: #666;">
-                    Obsługiwane formaty: {{ allowed_extensions|join(', ') }}
-                </p>
-                
-                <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
-                    <label for="file-input" class="file-label">
-                        <span class="file-label-text">Wybierz pliki audio lub przeciągnij je tutaj</span>
-                    </label>
-                    <input type="file" id="file-input" name="files" accept="{{ accept_attribute }}" multiple required>
-                    
-                    <button type="submit" class="btn btn-primary">
-                        Zapisz i przetwórz
-                    </button>
-                </form>
-            </section>
+            <section class="dashboard-tabs">
+                <div class="tabs">
+                    <button class="tab-btn active" data-tab="queue">Transkrypcja i analiza</button>
+                    <button class="tab-btn" data-tab="chat">Porozmawiajmy</button>
+                </div>
 
-            <!-- Queue section -->
-            <section class="queue-section">
-                <h2>Kolejka przetwarzania</h2>
-                <p style="color: #666; font-size: 0.85em; margin-bottom: 15px;">
-                    Kolejka jest zapisywana automatycznie i przywracana po restarcie. 
-                    Retencja plików: {{ retention_days }} dni.
-                </p>
-                
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Plik</th>
-                            <th>Rozmiar</th>
-                            <th>Status</th>
-                            <th>Wyniki</th>
-                        </tr>
-                    </thead>
-                    <tbody id="queue-body">
-                        {% if not queue_items %}
-                            <tr class="queue-empty">
-                                <td colspan="4">Brak zadań w kolejce.</td>
-                            </tr>
-                        {% else %}
-                            {% for item in queue_items %}
-                                <tr data-id="{{ item.id }}">
-                                    <td>
-                                        {{ item.filename }}
-                                        <br><small>Dodano: {{ item.created_at_formatted }}</small>
-                                    </td>
-                                    <td>{{ item.size_mb }} MB</td>
-                                    <td>
-                                        <span class="status {{ item.status }}">
-                                            {{ status_labels[item.status] }}
-                                        </span>
-                                        {% if item.status == "processing" %}
-                                            <br><small id="countdown-{{ item.id }}">Obliczanie...</small>
-                                        {% elif item.status == "completed" and item.processing_time %}
-                                            <br><small>Przetworzone w czasie: {{ item.processing_time }}</small>
-                                        {% elif item.error %}
-                                            <br><small style="color: #dc3545;">{{ item.error }}</small>
-                                        {% endif %}
-                                    </td>
-                                    <td class="downloads">
-                                        {% if item.status == "completed" %}
-                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='transcription') }}">Transkrypcja</a>
-                                            <a href="{{ url_for('download_result', queue_id=item.id, file_type='analysis') }}">Analiza</a>
-                                        {% else %}
-                                            <small>–</small>
-                                        {% endif %}
-                                    </td>
+                <div id="tab-queue" class="tab-content active">
+                    <!-- Upload section -->
+                    <section class="card">
+                        <h2>Dodaj pliki audio</h2>
+                        <p style="margin-bottom: 15px; color: #666;">
+                            Obsługiwane formaty: {{ allowed_extensions|join(', ') }}
+                        </p>
+                        
+                        <form action="{{ url_for('upload') }}" method="post" enctype="multipart/form-data">
+                            <label for="file-input" class="file-label">
+                                <span class="file-label-text">Wybierz pliki audio lub przeciągnij je tutaj</span>
+                            </label>
+                            <input type="file" id="file-input" name="files" accept="{{ accept_attribute }}" multiple required>
+                            
+                            <div class="preprocess-toggle-card">
+                                <label class="checkbox-wrapper" style="align-items:flex-start;">
+                                    <input type="checkbox" name="process_original" value="1"
+                                        {% if process_original_selected %}checked{% endif %}
+                                        {% if preprocess_force_original %}disabled{% endif %}>
+                                    <div>
+                                        <div class="checkbox-title">Przetwarzaj oryginalny plik (bez poprawek)</div>
+                                        <div class="checkbox-desc">
+                                            {% if preprocess_force_original %}
+                                                Opcja wymuszona w ustawieniach – wszystkie nagrania przechodzą bez zmian.
+                                            {% elif not preprocess_default_enabled %}
+                                                Domyślnie preprocessing jest globalnie wyłączony. Możesz tymczasowo użyć oryginału lub ponownie włączyć preprocessing w ustawieniach.
+                                            {% else %}
+                                                Gdy przełączysz tę opcję, zapamiętamy ją dla kolejnych przesłań (dopóki nie odświeżysz/przełączysz).
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </label>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">
+                                Zapisz i przetwórz
+                            </button>
+                        </form>
+                    </section>
+
+                    <!-- Queue section -->
+                    <section class="queue-section">
+                        <h2>Kolejka przetwarzania</h2>
+                        <p style="color: #666; font-size: 0.85em; margin-bottom: 15px;">
+                            Kolejka jest zapisywana automatycznie i przywracana po restarcie. 
+                            Retencja plików: {{ retention_days }} dni.
+                        </p>
+                        
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Plik</th>
+                                    <th>Rozmiar</th>
+                                    <th>Status</th>
+                                    <th>Wariant audio</th>
+                                    <th>Wyniki</th>
                                 </tr>
-                            {% endfor %}
-                        {% endif %}
-                    </tbody>
-                </table>
+                            </thead>
+                            <tbody id="queue-body">
+                                {% if not queue_items %}
+                                    <tr class="queue-empty">
+                                        <td colspan="5">Brak zadań w kolejce.</td>
+                                    </tr>
+                                {% else %}
+                                    {% for item in queue_items %}
+                                        <tr data-id="{{ item.id }}">
+                                            <td>
+                                                {{ item.filename }}
+                                                <br><small>Dodano: {{ item.created_at_formatted }}</small>
+                                            </td>
+                                            <td>{{ item.size_mb }} MB</td>
+                                            <td>
+                                                <span class="status {{ item.status }}">
+                                                    {{ status_labels[item.status] }}
+                                                </span>
+                                                {% if item.status == "processing" %}
+                                                    <br><small id="countdown-{{ item.id }}">Obliczanie...</small>
+                                                {% elif item.status == "completed" and item.processing_time %}
+                                                    <br><small>Przetworzone w czasie: {{ item.processing_time }}</small>
+                                                {% elif item.error %}
+                                                    <br><small style="color: #dc3545;">{{ item.error }}</small>
+                                                {% endif %}
+                                            </td>
+                                            <td class="preprocess-info">
+                                                {% set reason_key = item.preprocess_reason or ( 'default_preprocess' if item.preprocess_requested else 'default_process_original') %}
+                                                {% set reason_label = preprocess_reason_labels.get(reason_key, reason_key) %}
+                                                <span class="preprocess-pill {% if item.preprocess_applied %}on{% else %}off{% endif %}">
+                                                    {% if item.preprocess_applied %}Poprawione{% else %}Oryginał{% endif %}
+                                                </span>
+                                                <small>{{ reason_label }}</small>
+                                            </td>
+                                            <td class="downloads">
+                                                {% if item.status == "completed" %}
+                                                    <a href="{{ url_for('download_result', queue_id=item.id, file_type='transcription') }}">Transkrypcja</a>
+                                                    <a href="{{ url_for('download_result', queue_id=item.id, file_type='analysis') }}">Analiza</a>
+                                                {% else %}
+                                                    <small>–</small>
+                                                {% endif %}
+                                            </td>
+                                        </tr>
+                                    {% endfor %}
+                                {% endif %}
+                            </tbody>
+                        </table>
+                    </section>
+                </div>
+
+                <div id="tab-chat" class="tab-content">
+                    <section class="chat-card">
+                        <div class="chat-layout">
+                            <div class="chat-sidebar">
+                                <div class="chat-sidebar-header">
+                                    <h3>Twoje rozmowy</h3>
+                                    <p>Wybierz transkrypcję, którą chcesz omówić z Zaufanym Trzecim Agentem.</p>
+                                </div>
+                                <div class="chat-search">
+                                    <input type="text" placeholder="Szukaj po nazwie pliku..." />
+                                </div>
+                                <div class="chat-conversation-list" id="conversation-list">
+                                    <div class="chat-conversation-placeholder">
+                                        <p>Brak rozmów. Wybierz plik w kolejce, aby rozpocząć konwersację.</p>
+                                    </div>
+                                </div>
+                                <div class="chat-selected-meta" id="selected-conversation-meta">
+                                    <strong>Brak aktywnej rozmowy</strong>
+                                    <p>Po lewej wybierz transkrypcję, aby zobaczyć historię i dodać wiadomość.</p>
+                                </div>
+                            </div>
+
+                            <div class="chat-panel">
+                                <div class="chat-panel-header">
+                                    <div>
+                                        <h3>Zaufany Trzeci Agent</h3>
+                                        <p id="chat-selected-title">Brak wybranego kontekstu</p>
+                                    </div>
+                                    <div class="chat-panel-actions">
+                                        <button class="btn btn-secondary btn-small" disabled>Załaduj transkrypcję</button>
+                                        <button class="btn btn-secondary btn-small" disabled>Pokaż analizę</button>
+                                    </div>
+                                </div>
+
+                                <div class="chat-history" id="chat-history">
+                                    <div class="chat-empty-state">
+                                        <h4>Wybierz transkrypcję aby rozpocząć</h4>
+                                        <p>Po lewej stronie znajdziesz listę ukończonych zadań. Wybierz interesującą konwersację lub rozpocznij nową, aby zadać pytania modelowi.</p>
+                                        <ul>
+                                            <li>Pytaj o kontekst rozmowy (np. „co było podstawą włączenia alarmu?”).</li>
+                                            <li>Dodawaj pliki porównawcze, aby zweryfikować zgodność treści.</li>
+                                            <li>Proś o streszczenia, analizę sentymentu, listy zadań.</li>
+                                        </ul>
+                                    </div>
+                                </div>
+
+                                <form class="chat-composer" id="chat-composer" action="javascript:void(0);">
+                                    <div class="chat-composer-row">
+                                        <textarea placeholder="Napisz wiadomość do Agenta..." disabled></textarea>
+                                        <div class="chat-composer-actions">
+                                            <label class="btn btn-secondary btn-small file-attach-btn">
+                                                Dołącz plik
+                                                <input type="file" accept=".txt,.md,.png,.jpg,.jpeg,.pdf" disabled>
+                                            </label>
+                                            <button type="submit" class="btn btn-primary" disabled>Wyślij</button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </section>
+                </div>
             </section>
         </main>
 
         <footer>
-            Gacek 🦇 v2.0
+            Gacek 🦇 v2.01
         </footer>
     </div>
     
+    <script id="preprocess-reasons-data" type="application/json">{{ preprocess_reason_labels | tojson | safe }}</script>
+    <script id="queue-items-data" type="application/json">{{ queue_items | tojson | safe }}</script>
     <script src="{{ url_for('static', filename='js/app.js') }}"></script>
     <script>
+        const preprocessDataElement = document.getElementById('preprocess-reasons-data');
+        window.PREPROCESS_REASON_LABELS = preprocessDataElement ? JSON.parse(preprocessDataElement.textContent || '{}') : {};
+        
+        // Store queue items for chat functionality
+        const queueItemsElement = document.getElementById('queue-items-data');
+        window.QUEUE_ITEMS = queueItemsElement ? JSON.parse(queueItemsElement.textContent || '[]') : [];
+        
         // Initialize countdown for processing items
-        {% for item in queue_items %}
-            {% if item.status == "processing" and item.started_at %}
-                updateCountdown('{{ item.id }}', {{ item.estimated_minutes }}, '{{ item.started_at }}');
-            {% endif %}
-        {% endfor %}
+        window.QUEUE_ITEMS.forEach(item => {
+            if (item.status === "processing" && item.started_at) {
+                updateCountdown(item.id, item.estimated_minutes, item.started_at);
+            }
+        });
         
         // Show flash messages as toasts
         {% with messages = get_flashed_messages(with_categories=true) %}

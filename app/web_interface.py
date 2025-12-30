@@ -45,6 +45,7 @@ from .config import (
 )
 from .file_loader import AudioFileValidator
 from .processing_queue import ProcessingQueue, QueueItem
+from .chat_manager import ChatManager
 from .settings_manager import get_settings_manager, SETTINGS_CATEGORIES
 from .prompt_manager import get_prompt_manager
 
@@ -117,6 +118,17 @@ def create_web_app(
         "completed": "Zakończone",
         "failed": "Błąd",
     }
+    preprocess_reason_labels: Dict[str, str] = {
+        "force_original_setting": "Wymuszone w ustawieniach",
+        "preprocess_disabled_setting": "Preprocessing globalnie wyłączony",
+        "user_choice_process_original": "Wybrano oryginał",
+        "user_choice_preprocess": "Wybrano poprawione audio",
+        "default_preprocess": "Domyślnie (wg ustawień)",
+        "default_process_original": "Domyślnie (preprocessing wyłączony)",
+        "preprocessor_unavailable": "Preprocessor niedostępny",
+    }
+
+    chat_manager = ChatManager()
 
     def login_required(view):
         @wraps(view)
@@ -127,7 +139,32 @@ def create_web_app(
 
         return wrapped
 
-    def _start_processing(queue_item: QueueItem, enable_preprocessing: bool = True) -> None:
+    def _get_ollama_analyzer(chat_mode: bool = False):
+        """Tworzy instancję OllamaAnalyzer z ustawieniami z konfiguracji."""
+        from .ollama_analyzer import OllamaAnalyzer
+        
+        if chat_mode:
+            # Pobierz ustawienia czatu
+            settings_manager = get_settings_manager()
+            chat_model = settings_manager.get_setting("CHAT_OLLAMA_MODEL") or OLLAMA_MODEL
+            chat_params = {
+                "temperature": float(settings_manager.get_setting("CHAT_OLLAMA_TEMPERATURE") or "0.7"),
+                "top_p": float(settings_manager.get_setting("CHAT_OLLAMA_TOP_P") or "0.9"),
+                "top_k": int(settings_manager.get_setting("CHAT_OLLAMA_TOP_K") or "40"),
+                "num_ctx": int(settings_manager.get_setting("CHAT_OLLAMA_NUM_CTX") or "2048"),
+                "num_predict": int(settings_manager.get_setting("CHAT_OLLAMA_NUM_PREDICT") or "512"),
+            }
+            return OllamaAnalyzer(base_url=OLLAMA_BASE_URL, model=chat_model, chat_params=chat_params)
+        else:
+            return OllamaAnalyzer(base_url=OLLAMA_BASE_URL, model=OLLAMA_MODEL)
+
+    def _start_processing(
+        queue_item: QueueItem,
+        *,
+        enable_preprocessing: bool = True,
+        preprocess_requested: bool = True,
+        preprocess_reason: Optional[str] = None,
+    ) -> None:
         """Uruchamia przetwarzanie pliku (w tle lub synchronicznie)."""
 
         def _worker():
@@ -137,6 +174,8 @@ def create_web_app(
                     queue_item.input_path,
                     queue_item_id=queue_item.id,
                     enable_preprocessing=enable_preprocessing,
+                    preprocess_requested=preprocess_requested,
+                    preprocess_reason=preprocess_reason,
                 )
                 if result.get("success"):
                     manual_files: Dict[str, str] = {}
@@ -222,12 +261,31 @@ def create_web_app(
         # Pobierz retencję z ustawień
         settings_manager = get_settings_manager()
         retention_days = settings_manager.get_setting("FILE_RETENTION_DAYS") or "90"
+        force_original_setting = (
+            (settings_manager.get_setting("AUDIO_FORCE_ORIGINAL") or "false").lower()
+            == "true"
+        )
+        preprocess_default_enabled = (
+            (settings_manager.get_setting("AUDIO_PREPROCESS_ENABLED") or "true").lower()
+            == "true"
+        )
+        saved_choice = session.get("process_original_choice")
+        if saved_choice is None:
+            process_original_selected = not preprocess_default_enabled
+        else:
+            process_original_selected = saved_choice == "1"
+        if force_original_setting:
+            process_original_selected = True
         return render_template(
             "dashboard.html",
             queue_items=queue_items,
             accept_attribute=accept_attribute,
             allowed_extensions=list(AudioFileValidator.SUPPORTED_EXTENSIONS),
             retention_days=retention_days,
+            preprocess_force_original=force_original_setting,
+            process_original_selected=process_original_selected,
+            preprocess_default_enabled=preprocess_default_enabled,
+            preprocess_reason_labels=preprocess_reason_labels,
         )
 
     @app.route("/upload", methods=["POST"])
@@ -240,9 +298,40 @@ def create_web_app(
 
         # Sprawdź dostępność modelu Ollama przed przetwarzaniem
         model_available, model_error = check_ollama_model_available()
-        
-        # Pobranie ustawienia audio preprocessora (domyślnie włączony)
-        enable_preprocessing = request.form.get("enable_preprocessing") == "1"
+        settings_manager = get_settings_manager()
+        force_original_setting = (
+            (settings_manager.get_setting("AUDIO_FORCE_ORIGINAL") or "false").lower()
+            == "true"
+        )
+        preprocess_default_enabled = (
+            (settings_manager.get_setting("AUDIO_PREPROCESS_ENABLED") or "true").lower()
+            == "true"
+        )
+        process_original_form = request.form.get("process_original") == "1"
+
+        if force_original_setting:
+            process_original_selected = True
+            preprocess_reason = "force_original_setting"
+        elif not preprocess_default_enabled:
+            process_original_selected = True
+            preprocess_reason = "preprocess_disabled_setting"
+        elif process_original_form:
+            process_original_selected = True
+            preprocess_reason = "user_choice_process_original"
+        else:
+            process_original_selected = False
+            preprocess_reason = "user_choice_preprocess"
+
+        if not force_original_setting and preprocess_default_enabled:
+            session["process_original_choice"] = "1" if process_original_selected else "0"
+
+        enable_preprocessing = preprocess_default_enabled and not process_original_selected
+        preprocess_requested = enable_preprocessing
+
+        if not preprocess_requested and preprocess_reason is None:
+            preprocess_reason = "default_process_original"
+        elif preprocess_requested and preprocess_reason is None:
+            preprocess_reason = "default_preprocess"
 
         saved_items: List[QueueItem] = []
         rejected: List[str] = []
@@ -253,7 +342,11 @@ def create_web_app(
                 rejected.append(storage.filename or "bez_nazwy")
                 continue
 
-            queue_item = processing_queue.enqueue(saved_path)
+            queue_item = processing_queue.enqueue(
+                saved_path,
+                preprocess_requested=preprocess_requested,
+                preprocess_reason=preprocess_reason,
+            )
             saved_items.append(queue_item)
             
             # Jeśli model niedostępny, oznacz jako błąd
@@ -263,7 +356,12 @@ def create_web_app(
                     f"BRAK MODELU ANALIZY: {model_error}"
                 )
             else:
-                _start_processing(queue_item, enable_preprocessing=enable_preprocessing)
+                _start_processing(
+                    queue_item,
+                    enable_preprocessing=enable_preprocessing,
+                    preprocess_requested=preprocess_requested,
+                    preprocess_reason=preprocess_reason,
+                )
 
         if saved_items:
             if model_available:
@@ -316,6 +414,158 @@ def create_web_app(
             abort(404)
 
         return send_from_directory(directory, file_name, as_attachment=True)
+
+    # ===========================================
+    # CZAT "POROZMAWIAJMY"
+    # ===========================================
+    
+    @app.route("/api/chat/conversations")
+    @login_required
+    def api_chat_conversations():
+        """Zwraca listę konwersacji czatu."""
+        conversations = chat_manager.list_conversations()
+        return jsonify({"conversations": conversations})
+    
+    @app.route("/api/chat/conversation/<conversation_id>")
+    @login_required
+    def api_chat_conversation(conversation_id: str):
+        """Zwraca szczegóły konwersacji."""
+        conversation = chat_manager.get_conversation(conversation_id)
+        if not conversation:
+            return jsonify({"error": "Konwersacja nie znaleziona"}), 404
+        return jsonify({"conversation": conversation.to_dict()})
+    
+    @app.route("/api/chat/start", methods=["POST"])
+    @login_required
+    def api_chat_start():
+        """Rozpoczyna nową konwersację na podstawie zadania z kolejki."""
+        data = request.get_json()
+        queue_id = data.get("queue_id")
+        if not queue_id:
+            return jsonify({"error": "Brak ID zadania"}), 400
+        
+        # Znajdź zadanie w kolejce
+        queue_item = processing_queue.get_item(queue_id)
+        if not queue_item:
+            return jsonify({"error": "Zadanie nie znalezione"}), 404
+        
+        if queue_item.status != "completed":
+            return jsonify({"error": "Zadanie nie zostało jeszcze ukończone"}), 400
+        
+        # Pobierz ścieżki do plików wynikowych
+        transcription_file = processing_queue.get_result_file(queue_id, "transcription")
+        analysis_file = processing_queue.get_result_file(queue_id, "analysis")
+        
+        # Rozpocznij konwersację
+        conversation = chat_manager.start_conversation(
+            queue_id=queue_id,
+            filename=queue_item.filename,
+            transcription_file=transcription_file,
+            analysis_file=analysis_file
+        )
+        
+        return jsonify({"conversation": conversation.to_summary()})
+    
+    @app.route("/api/chat/message", methods=["POST"])
+    @login_required
+    def api_chat_message():
+        """Dodaje wiadomość do konwersacji i zwraca odpowiedź asystenta."""
+        data = request.get_json()
+        conversation_id = data.get("conversation_id")
+        user_message = data.get("message", "")
+        
+        if not conversation_id:
+            return jsonify({"error": "Brak ID konwersacji"}), 400
+        
+        if not user_message.strip():
+            return jsonify({"error": "Pusta wiadomość"}), 400
+        
+        # Dodaj wiadomość użytkownika
+        user_msg = chat_manager.add_message(
+            conversation_id=conversation_id,
+            role="user",
+            content=user_message
+        )
+        
+        if not user_msg:
+            return jsonify({"error": "Nie udało się dodać wiadomości"}), 404
+        
+        # Pobierz konwersację
+        conversation = chat_manager.get_conversation(conversation_id)
+        if not conversation:
+            return jsonify({"error": "Konwersacja nie znaleziona"}), 404
+        
+        # Przygotuj kontekst dla modelu
+        context = {
+            "filename": conversation.filename,
+            "queue_id": conversation.queue_id
+        }
+        
+        # Wczytaj transkrypcję i analizę jeśli dostępne
+        if conversation.transcription_file:
+            transcription_path = target_output / conversation.transcription_file
+            if transcription_path.exists():
+                try:
+                    context["transcription"] = transcription_path.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.warning(f"Błąd wczytywania transkrypcji: {e}")
+        
+        if conversation.analysis_file:
+            analysis_path = target_output / conversation.analysis_file
+            if analysis_path.exists():
+                try:
+                    context["analysis"] = analysis_path.read_text(encoding="utf-8")
+                except Exception as e:
+                    logger.warning(f"Błąd wczytywania analizy: {e}")
+        
+        # Przygotuj prompt dla modelu
+        prompt = _build_chat_prompt(user_message, context)
+        
+        # Wywołaj model Ollama z ustawieniami czatu
+        try:
+            ollama = _get_ollama_analyzer(chat_mode=True)
+            response = ollama.analyze_content(prompt, "custom")
+            
+            if response["success"]:
+                assistant_response = response["raw_response"]
+            else:
+                assistant_response = f"Przepraszam, wystąpił błąd: {response.get('error', 'Nieznany błąd')}"
+                logger.error(f"Błąd Ollama w czacie: {response.get('error', 'Nieznany błąd')}")
+        except Exception as e:
+            assistant_response = f"Przepraszam, wystąpił błąd podczas komunikacji z modelem: {str(e)}"
+            logger.error(f"Błąd komunikacji z Ollama: {e}")
+        
+        # Dodaj odpowiedź asystenta
+        assistant_msg = chat_manager.add_message(
+            conversation_id=conversation_id,
+            role="assistant",
+            content=assistant_response
+        )
+        
+        return jsonify({
+            "user_message": user_msg.to_dict(),
+            "assistant_message": assistant_msg.to_dict() if assistant_msg else None
+        })
+    
+    def _build_chat_prompt(user_message: str, context: Dict) -> str:
+        """Buduje prompt dla czatu z kontekstem transkrypcji i analizy."""
+        prompt_parts = []
+        
+        prompt_parts.append("Jesteś ekspertem analizującym rozmowy telefoniczne. Odpowiadasz po polsku.")
+        
+        if context.get("filename"):
+            prompt_parts.append(f"Nazwa pliku: {context['filename']}")
+        
+        if context.get("transcription"):
+            prompt_parts.append("\nTranskrypcja rozmowy:\n" + context["transcription"])
+        
+        if context.get("analysis"):
+            prompt_parts.append("\nAnaliza rozmowy:\n" + context["analysis"])
+        
+        prompt_parts.append(f"\nPytanie użytkownika: {user_message}")
+        prompt_parts.append("\nOdpowiedz zwięźle i rzeczowo, bazując na dostarczonym kontekście.")
+        
+        return "\n\n".join(prompt_parts)
 
     # ===========================================
     # USTAWIENIA
@@ -524,6 +774,89 @@ Odpowiedz w formacie JSON. Wszystkie teksty w odpowiedzi muszą być w języku p
             flash(f"Nie udało się usunąć promptu {prompt_number:02d}.", "error")
         
         return redirect(url_for("settings_prompts"))
+    
+    # ===========================================
+    # PROMPT STATUS
+    # ===========================================
+    
+    @app.route("/settings/prompt-status")
+    @login_required
+    @settings_auth_required
+    def settings_prompt_status():
+        """Ustawienia promptu statusu."""
+        # Wczytaj istniejący prompt statusu
+        status_prompt_file = PROMPT_DIR / "status_prompt.txt"
+        requirement = ""
+        statuses = ""
+        instruction = ""
+        
+        if status_prompt_file.exists():
+            try:
+                content = status_prompt_file.read_text(encoding="utf-8")
+                # Parsuj zawartość na sekcje
+                sections = parse_status_prompt_content(content)
+                requirement = sections.get("requirement", "")
+                statuses = sections.get("statuses", "")
+                instruction = sections.get("instruction", "")
+            except Exception as e:
+                logger.error(f"Błąd wczytywania promptu statusu: {e}")
+        
+        return render_template(
+            "settings_prompt_status.html",
+            requirement=requirement,
+            statuses=statuses,
+            instruction=instruction,
+            categories=SETTINGS_CATEGORIES,
+        )
+    
+    @app.route("/settings/prompt-status/save", methods=["POST"])
+    @login_required
+    @settings_auth_required
+    def settings_status_prompt_save():
+        """Zapisuje prompt statusu."""
+        requirement = request.form.get("requirement", "").strip()
+        statuses = request.form.get("statuses", "").strip()
+        instruction = request.form.get("instruction", "").strip()
+        
+        # Walidacja
+        if not requirement and not statuses and not instruction:
+            flash("Prompt statusu nie może być pusty.", "error")
+            return redirect(url_for("settings_prompt_status"))
+        
+        # Zbuduj zawartość promptu
+        content = build_status_prompt_content(requirement, statuses, instruction)
+        
+        # Zapisz do pliku
+        status_prompt_file = PROMPT_DIR / "status_prompt.txt"
+        try:
+            status_prompt_file.write_text(content, encoding="utf-8")
+            flash("Prompt statusu zapisany pomyślnie.", "success")
+            logger.info(f"Prompt statusu zapisany ({len(content)} znaków)")
+        except Exception as e:
+            flash(f"Błąd zapisu promptu statusu: {e}", "error")
+            logger.error(f"Błąd zapisu promptu statusu: {e}")
+        
+        return redirect(url_for("settings_prompt_status"))
+    
+    def parse_status_prompt_content(content: str) -> Dict[str, str]:
+        """Parsuje zawartość promptu statusu na sekcje."""
+        sections = {"requirement": "", "statuses": "", "instruction": ""}
+        
+        # Podziel na sekcje
+        parts = content.split("\n\n===\n\n")
+        if len(parts) >= 1:
+            sections["requirement"] = parts[0]
+        if len(parts) >= 2:
+            sections["statuses"] = parts[1]
+        if len(parts) >= 3:
+            sections["instruction"] = parts[2]
+        
+        return sections
+    
+    def build_status_prompt_content(requirement: str, statuses: str, instruction: str) -> str:
+        """Buduje zawartość promptu statusu z sekcji."""
+        parts = [requirement, statuses, instruction]
+        return "\n\n===\n\n".join(parts)
 
     # ===========================================
     # RESTART SYSTEMU

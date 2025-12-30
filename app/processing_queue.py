@@ -64,6 +64,10 @@ class QueueItem:
     error: Optional[str] = None
     estimated_minutes: int = 1
     result_files: Dict[str, str] = field(default_factory=dict)
+    preprocess_requested: bool = True
+    preprocess_applied: Optional[bool] = None
+    preprocess_reason: Optional[str] = None
+    status_check: Optional[Dict[str, str]] = None
 
     def _format_datetime(self, dt: Optional[datetime]) -> Optional[str]:
         """Formatuje datę do formatu ISO 8601 z timezone (dla JavaScript)."""
@@ -110,6 +114,10 @@ class QueueItem:
             "processing_time": self._calculate_processing_time(),
             "error": self.error,
             "result_files": self.result_files,
+            "preprocess_requested": self.preprocess_requested,
+            "preprocess_applied": self.preprocess_applied,
+            "preprocess_reason": self.preprocess_reason,
+            "status_check": self.status_check,
         }
     
     def to_persistence_dict(self) -> Dict:
@@ -126,6 +134,10 @@ class QueueItem:
             "error": self.error,
             "estimated_minutes": self.estimated_minutes,
             "result_files": self.result_files,
+            "preprocess_requested": self.preprocess_requested,
+            "preprocess_applied": self.preprocess_applied,
+            "preprocess_reason": self.preprocess_reason,
+            "status_check": self.status_check,
         }
     
     @classmethod
@@ -151,6 +163,10 @@ class QueueItem:
             error=data.get("error"),
             estimated_minutes=data.get("estimated_minutes", 1),
             result_files=data.get("result_files", {}),
+            preprocess_requested=data.get("preprocess_requested", True),
+            preprocess_applied=data.get("preprocess_applied"),
+            preprocess_reason=data.get("preprocess_reason"),
+            status_check=data.get("status_check"),
         )
 
 
@@ -202,7 +218,13 @@ class ProcessingQueue:
         except Exception as e:
             logger.error(f"Błąd zapisu stanu kolejki: {e}")
 
-    def enqueue(self, file_path: Path) -> QueueItem:
+    def enqueue(
+        self,
+        file_path: Path,
+        *,
+        preprocess_requested: bool = True,
+        preprocess_reason: Optional[str] = None,
+    ) -> QueueItem:
         """Dodaje nowy plik do kolejki."""
         size = file_path.stat().st_size if file_path.exists() else 0
         item = QueueItem(
@@ -211,6 +233,8 @@ class ProcessingQueue:
             size_bytes=size,
             input_path=file_path,
             estimated_minutes=_estimate_minutes(file_path),
+            preprocess_requested=preprocess_requested,
+            preprocess_reason=preprocess_reason,
         )
         with self._lock:
             self._items[item.id] = item
@@ -231,7 +255,16 @@ class ProcessingQueue:
                 item.error = None
                 self._save_state()
 
-    def mark_completed(self, item_id: str, result_files: Dict[str, str]) -> None:
+    def mark_completed(
+        self,
+        item_id: str,
+        result_files: Dict[str, str],
+        *,
+        preprocess_applied: Optional[bool] = None,
+        preprocess_reason: Optional[str] = None,
+        preprocess_requested: Optional[bool] = None,
+        status_check: Optional[Dict[str, str]] = None,
+    ) -> None:
         with self._lock:
             item = self._items.get(item_id)
             if item:
@@ -239,6 +272,14 @@ class ProcessingQueue:
                 item.finished_at = _utcnow()
                 item.result_files = result_files
                 item.error = None
+                if preprocess_applied is not None:
+                    item.preprocess_applied = preprocess_applied
+                if preprocess_reason is not None:
+                    item.preprocess_reason = preprocess_reason
+                if preprocess_requested is not None:
+                    item.preprocess_requested = preprocess_requested
+                if status_check is not None:
+                    item.status_check = status_check
                 self._save_state()
 
     def mark_failed(self, item_id: str, error_message: str) -> None:

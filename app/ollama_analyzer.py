@@ -29,9 +29,10 @@ def _load_system_prompt() -> str:
 class OllamaAnalyzer:
     """Klasa do analizy treści za pomocą Ollama"""
     
-    def __init__(self, base_url: str = "http://localhost:11434", model: str = "gemma3:12b"):
+    def __init__(self, base_url: str = "http://localhost:11434", model: str = "gemma3:12b", chat_params: Optional[Dict[str, Any]] = None):
         self.base_url = base_url
         self.model = model
+        self.chat_params = chat_params or {}
         self.api_url = f"{base_url}/api/generate"
         self.last_connection_error: Optional[str] = None
         self.last_available_models: List[str] = []
@@ -201,7 +202,7 @@ class OllamaAnalyzer:
                 "model": self.model,
                 "prompt": prompt,
                 "stream": self.stream_responses,
-                "options": OLLAMA_GENERATION_PARAMS
+                "options": {**OLLAMA_GENERATION_PARAMS, **self.chat_params}
             }
             timeout = (self.connect_timeout, self.request_timeout)
 
@@ -562,7 +563,7 @@ Odpowiedź w formacie JSON:
                 "model": self.model,
                 "prompt": prompt,
                 "stream": self.stream_responses,
-                "options": OLLAMA_GENERATION_PARAMS
+                "options": {**OLLAMA_GENERATION_PARAMS, **self.chat_params}
             }
             timeout = (self.connect_timeout, self.request_timeout)
 

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gacek 🦇 – Prompt statusu</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-title">
+                <h1>Gacek 🦇</h1>
+                <p class="header-subtitle">Prompt statusu</p>
+            </div>
+            <div class="header-controls">
+                <div class="header-controls-row">
+                    <div class="theme-toggle-wrapper">
+                        <label class="theme-toggle" for="theme-toggle">
+                            <input type="checkbox" id="theme-toggle" class="theme-toggle-input">
+                            <span class="theme-toggle-slider">
+                                <span class="theme-toggle-icon">◐</span>
+                            </span>
+                        </label>
+                        <div class="color-scheme-selector" id="color-scheme-selector"></div>
+                        <div class="theme-message" id="theme-message"></div>
+                    </div>
+                </div>
+                <div class="header-nav">
+                    <a href="{{ url_for('settings') }}">Powrót do ustawień</a>
+                    <a href="{{ url_for('logout') }}">Wyloguj</a>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <section class="card">
+                <h2>Prompt statusu</h2>
+                
+                <div class="info-box">
+                    <h3>Jak działa prompt statusu?</h3>
+                    <p>
+                        Prompt statusu jest wykonywany po zakończeniu analizy każdego pliku. 
+                        Wynik tego promptu jest wyświetlany jako dodatkowy status w oknie przetwarzania.
+                    </p>
+                    <h3 style="margin-top: 15px;">Format odpowiedzi:</h3>
+                    <p>
+                        Model powinien zwrócić odpowiedź w formacie:<br>
+                        <code>NAZWA_STATUSU: OPIS:kolor</code>
+                    </p>
+                    <p>
+                        Przykłady:
+                        <ul>
+                            <li><code>SECURITY_STATUS: OK:zielony</code></li>
+                            <li><code>SECURITY_STATUS: ALARM:czerwony</code></li>
+                            <li><code>SECURITY_STATUS: PODEJRZENIE:żółty</code></li>
+                        </ul>
+                    </p>
+                </div>
+
+                <!-- Status Prompt Section -->
+                <div class="prompt-item" style="margin-bottom: 25px; border: 2px solid var(--accent-color); border-radius: 8px;">
+                    <div class="prompt-header" onclick="toggleStatusPrompt()" style="background: var(--accent-color); color: white;">
+                        <div class="prompt-title">
+                            <span class="prompt-number" style="background: white; color: var(--accent-color);">STATUS</span>
+                            <span>Prompt statusu</span>
+                        </div>
+                        <span id="toggle-icon-status">▼</span>
+                    </div>
+                    <div class="prompt-body" id="prompt-body-status" style="display: block;">
+                        <p style="margin-bottom: 15px; color: var(--text-secondary); font-size: 0.9em;">
+                            Ten prompt jest wykonywany po każdej analizie pliku. Wynik jest wyświetlany jako dodatkowy status.
+                        </p>
+                        
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 30px; margin-bottom: 20px;">
+                            <!-- Editor section -->
+                            <div>
+                                <form action="{{ url_for('settings_status_prompt_save') }}" method="post">
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; font-weight: 600; margin-bottom: 5px;">WYMAGANIE WOBEC STATUSU</label>
+                                        <textarea name="requirement" placeholder="Opisz co model ma sprawdzić w transkrypcji i analizie" style="min-height: 100px;">{{ requirement }}</textarea>
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; font-weight: 600; margin-bottom: 5px;">DOSTĘPNE STATUSY</label>
+                                        <textarea name="statuses" placeholder="NAZWA_STATUSU: kolor&#10;NAZWA_STATUSU: kolor&#10;NAZWA_STATUSU: kolor" style="min-height: 120px;">{{ statuses }}</textarea>
+                                    </div>
+                                    
+                                    <div style="margin-bottom: 15px;">
+                                        <label style="display: block; font-weight: 600; margin-bottom: 5px;">INSTRUKCJA OLLAMA</label>
+                                        <textarea name="instruction" placeholder="Instrukcje dla modelu jak ma odpowiedzieć" style="min-height: 100px;">{{ instruction }}</textarea>
+                                    </div>
+                                    
+                                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                                        <button type="submit" class="btn btn-primary">Zapisz prompt statusu</button>
+                                    </div>
+                                </form>
+                            </div>
+                            
+                            <!-- Preview and examples section -->
+                            <div>
+                                <h3 style="margin-top: 0; margin-bottom: 15px;">Przykład użycia</h3>
+                                <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; border: 1px solid #eee; font-size: 0.9em;">
+                                    <p><strong>WYMAGANIE WOBEC STATUSU:</strong><br>
+                                    Sprawdź czy w rozmowie występują próby manipulacji, presji psychicznej lub nielegalnych działań.</p>
+                                    
+                                    <p><strong>DOSTĘPNE STATUSY:</strong><br>
+                                    SECURITY_STATUS: zielony<br>
+                                    SECURITY_STATUS: żółty<br>
+                                    SECURITY_STATUS: czerwony</p>
+                                    
+                                    <p><strong>INSTRUKCJA OLLAMA:</strong><br>
+                                    Odpowiedz na pytanie z sekcji "WYMAGANIE WOBEC STATUSU" wybierając jeden z dostępnych statusów.</p>
+                                </div>
+                                
+                                <h3 style="margin-top: 20px; margin-bottom: 15px;">Dostępne kolory</h3>
+                                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; font-size: 0.9em;">
+                                    <div>biały</div>
+                                    <div>czarny</div>
+                                    <div>czerwony</div>
+                                    <div>zielony</div>
+                                    <div>niebieski</div>
+                                    <div>żółty</div>
+                                    <div>fioletowy</div>
+                                    <div>różowy</div>
+                                    <div>pomarańczowy</div>
+                                    <div>brązowy</div>
+                                    <div>szary</div>
+                                    <div>cyjan</div>
+                                    <div>magenta</div>
+                                    <div>limonkowy</div>
+                                    <div>malinowy</div>
+                                    <div>indygo</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            Prompt statusu jest wykonywany automatycznie po każdej analizie pliku.
+        </footer>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/app.js') }}"></script>
+    <script>
+        // Toggle status prompt
+        function toggleStatusPrompt() {
+            const body = document.getElementById('prompt-body-status');
+            const icon = document.getElementById('toggle-icon-status');
+            if (body.style.display === 'none') {
+                body.style.display = 'block';
+                icon.textContent = '▼';
+            } else {
+                body.style.display = 'none';
+                icon.textContent = '▶';
+            }
+        }
+        
+        // Show flash messages as toasts
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    showToast('{{ message|e }}', '{{ category }}');
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </script>
+</body>
+</html>

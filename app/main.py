@@ -3,6 +3,23 @@
 Wejściowy moduł aplikacji.
 """
 
+# KRYTYCZNE: Patch dla torch.load MUSI być pierwszy - przed jakimikolwiek importami!
+# Naprawia błąd "persistent id instruction" w PyTorch 2.x
+import torch
+import torch.serialization
+import functools
+
+torch.serialization._default_to_weights_only = lambda: False
+
+_original_torch_load = torch.load
+@functools.wraps(_original_torch_load)
+def _patched_torch_load(*args, **kwargs):
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return _original_torch_load(*args, **kwargs)
+torch.load = _patched_torch_load
+torch.serialization.load = _patched_torch_load
+
 import logging
 import os
 import sys
